@@ -1,0 +1,20 @@
+numpy==1.22.4
+pandas>=2.0.0
+igraph>=0.11.3
+imageio>=2.6.0
+seaborn>=0.9.0
+matplotlib>=3.4.3
+argparse>=1.1
+scipy
+# gc-python-utils #garbage collector
+openpyxl
+cairocffi>=1.7
+
+
+# rclpy
+opencv-python>=4.9.0
+opencv-contrib-python>=4.9.0
+transformers==4.36.0
+stitching>=0.5.3
+scikit-image>=0.18.3
+pyquaternion>=0.9.9
