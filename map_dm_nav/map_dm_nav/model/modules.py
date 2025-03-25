@@ -49,6 +49,179 @@ def signed_delta_rad(angle1, angle2):
 def clip_deg_360(angle):
     return angle % 360
 
+
+
+#==== GEOMETRY =====#
+
+def quadrilater_points(odom:list, zone_influence:list, influence_radius:float):
+    quadri_poses = [odom[:2]]
+ 
+    max_dist_angle = np.mean(zone_influence)
+    # not pretty but because Copy [:] etc is not really changing pointer...
+    zone_influence = [zone_influence[0], max_dist_angle, zone_influence[1]]
+    for angle_deg in zone_influence:
+        angle_rad = np.deg2rad(angle_deg)
+        x =2*influence_radius * np.cos(angle_rad) + odom[0]
+        y= 2*influence_radius * np.sin(angle_rad) + odom[1]
+        quadri_poses.append([x,y])
+        
+    return quadri_poses
+
+def triangle_points(odom:list, zone_influence:list, influence_radius:float)->list:
+    quadri_poses = [odom[:2]]
+     
+    for angle_deg in zone_influence:
+        angle_rad = np.deg2rad(angle_deg)
+        x =2*influence_radius * np.cos(angle_rad) + odom[0]
+        y= 2*influence_radius * np.sin(angle_rad) + odom[1]
+        quadri_poses.append([x,y])
+
+    return quadri_poses
+def sign(p1, p2, p3):
+    return (p1[0]- p3[0]) * (p2[1] - p3[1]) - (p2[0] - p3[0]) * (p1[1] - p3[1])
+
+def point_in_triangle(pt:list, triangle_poses:list)->bool:
+    '''
+    checking if point in triangle
+    '''
+    p1,p2,p3 = triangle_poses[0], triangle_poses[1], triangle_poses[2]
+    d1 = sign(pt, p1, p2)
+    d2 = sign(pt, p2, p3)
+    d3 = sign(pt, p3, p1)
+    has_neg = (d1 < 0) or (d2 < 0) or (d3 < 0)
+    has_pos = (d1 > 0) or (d2 > 0) or (d3 > 0) 
+    return not (has_neg and has_pos)
+
+def point_in_polygon(pt, polygon):
+    '''
+    Checking if point in polygon
+    '''
+    num_vertices = len(polygon)
+    inside = False
+ 
+    # Store the first point in the polygon and initialize the second point
+    p1 = polygon[0]
+ 
+    # Loop through each edge in the polygon
+    for i in range(1, num_vertices + 1):
+        # Get the next point in the polygon
+        p2 = polygon[i % num_vertices]
+ 
+        # Check if the point is above the minimum y coordinate of the edge
+        if pt[1] > min(p1[1], p2[1]):
+            # Check if the point is below the maximum y coordinate of the edge
+            if pt[1] <= max(p1[1], p2[1]):
+                # Check if the point is to the left of the maximum x coordinate of the edge
+                if pt[0] <= max(p1[0], p2[0]):
+                    # Calculate the x-intersection of the line connecting the point to the edge
+                    x_intersection = (pt[1] - p1[1]) * (p2[0] - p1[0]) / (p2[1] - p1[1]) + p1[0]
+ 
+                    # Check if the point is on the same line as the edge or to the left of the x-intersection
+                    if p1[0] == p2[0] or pt[0] <= x_intersection:
+                        # Flip the inside flag
+                        inside = not inside
+ 
+        # Store the current point as the first point for the next iteration
+        p1 = p2
+ 
+    # Return the value of the inside flag
+    return inside
+
+def angle_turn_from_pose_to_p(pose:list, goal_pose:list, in_deg:bool=False):
+        """
+        Compute the angle required to turn from `pose` to `goal_pose`, 
+        treating `pose` as the reference.
+
+        Args:
+            pose (list): The reference position [x, y].
+            goal_pose (list): The target position [x, y].
+            in_deg (bool, optional): If True, returns the angle in degrees; 
+            otherwise, in radians.
+
+        Returns:
+            float: The angle to turn from `pose` to `p`, clipped to [0, 360) 
+            degrees if in degrees, or [0, 2π) radians otherwise.
+        """
+        angle_pose_to_p = clip_rad_360(np.arctan2(goal_pose[1]- pose[1], goal_pose[0]- pose[0]))
+        if in_deg:
+            angle_pose_to_p = np.rad2deg(angle_pose_to_p)
+        return angle_pose_to_p
+
+def is_clokwise_from_p1_to_p2(p1:list, p2:list)->bool:
+    ''' 
+    Determines whether `p2` is in the **clockwise direction** from `p1`.
+
+    This is done by projecting `p2` onto the **perpendicular normal** of `p1`. 
+    If the projection is **negative**, `p2` is clockwise from `p1`, otherwise counterclockwise.
+
+    Parameters:
+        p1 (list or tuple): The first 2D point `[x1, y1]`
+        p2 (list or tuple): The second 2D point `[x2, y2]`
+
+    Returns:
+        bool: `True` if `p2` is **clockwise** from `p1`, otherwise `False`
+    '''
+    #p1_n= [-p1[1],p1[0]] #counter clockwise normal
+    pt_proj = -p1[0]*p2[1] + p1[1]*p2[0]
+    return pt_proj < 0
+
+def is_within_radius_range(pt:list, arc_center:list, arc_radius:float)->bool:
+    '''
+    Checks if a point `pt` lies within a circular region **centered at the origin** 
+    with the given `arc_radius`.
+
+    Parameters:
+        pt (list or tuple): The 2D point `[x, y]` we evaluate
+        arc_center (list or tuple): the center of the arc (usually odom)
+        arc_radius (float): The radius of the circular region
+
+    Returns:
+        bool: `True` if `pt` is **inside or on** the circle, otherwise `False`
+    '''
+    pt_dist_to_arc_center = euclidian_distance(arc_center, pt)
+    return pt_dist_to_arc_center <= arc_radius
+
+def point_in_triangle_with_arc(pt:list, polygon:list)-> bool:
+    '''
+    Determines if a point `pt` lies **inside a triangular region with one curved edge**.
+
+    The **polygon** is expected to have **4 points**:
+    - `[odom, start_vector, point_on_arc, end_vector]`
+    - The **arc** is formed between `start_vector` and `end_vector`, centered at `point_on_arc`.
+
+    **Steps:**
+    1. Check if the point is inside the regular **triangle** formed by `odom, start_vector, end_vector`.
+    2. If not, check if it's inside the **curved region**:
+        - The point must be within the **circular range**.
+        - The point must be **between** `start_vector` and `end_vector` in a clockwise sense.
+
+    Parameters:
+        pt (list or tuple): The 2D point `[x, y]` to check.
+        polygon (list of lists): A list of **4 points** `[odom, start_vector, point_on_arc, end_vector]`.
+
+    Returns:
+        bool: `True` if `pt` is inside the **triangle-with-arc**, otherwise `False`.
+    
+    '''
+    # point_on_arc = polygon[2]
+    arc_radius = euclidian_distance(polygon[0], polygon[2]) #should be influence_radius*2
+    p1, p2 = polygon[1], polygon[3]
+
+    # Check if inside the triangle
+    if point_in_triangle(pt, polygon):
+        # print(pt,'In triangle')
+        return True 
+
+    
+    # If p2 vector is clocwise from pt and pt is clocwise from p1
+    #  and in the circular region, then it's in the zone
+    if is_within_radius_range(pt, polygon[0], arc_radius) and \
+    is_clokwise_from_p1_to_p2(pt,p2) and not is_clokwise_from_p1_to_p2(pt,p1):
+       print(pt,'point_in_triangle_with_arc: In arc')
+       return True
+
+    return False 
+
 #==== pymdp modified methods ====#
 def run_partial_ob_vanilla_fpi(A, obs, num_obs, num_states, partial_ob=None, prior=None, num_iter=10, dF=1.0, dF_tol=0.001):
     """
@@ -234,6 +407,7 @@ def update_posterior_states(A, obs, prior=None, partial_ob=None, **kwargs):
         obs = utils.process_observation(obs, num_modalities, num_obs)
     else:
         obs = utils.process_observation(obs, 1, [num_obs[partial_ob]])
+        
     qs = run_partial_ob_vanilla_fpi(A, obs, num_obs, num_states, partial_ob, prior, **kwargs)
     return qs
 
@@ -602,24 +776,36 @@ def create_A_matrix(num_ob:list, num_states:list, dim:int=1)->np.ndarray:
     return A
 
 def update_B_matrix_size(B:np.ndarray, add:int=1, alter_weights:bool = True)->np.ndarray:
-    ''' TODO: Improve this logic... not great. especially for pB
-    increase the square matrix B by the value add,
-    feed the content of original matrix B in the newly generated one
-    all normalised values are re-normalised given new shape.
-    alter_weights: If we want the new probabilities to be less probable than already defined states.
-    '''
-    B_mean_value = 1/B[0].shape[0]
+    """
+    Expands the transition matrix B by adding new states and adjusts transition probabilities accordingly.
+
+    Args:
+        B (np.ndarray): The original transition matrix of shape (num_states, num_states, num_actions).
+        add (int, optional): The number of new states to add. Defaults to 1.
+        alter_weights (bool, optional): If True, modifies the transition probabilities to make 
+                                        newly added states less probable than existing ones. Defaults to True.
+
+    Returns:
+        np.ndarray: The updated transition matrix with new states added.
+
+    Notes:
+        - The method initialises a new, larger transition matrix and copies the original matrix values into it.
+        - Transition probabilities are renormalised after expansion.
+        - If `alter_weights` is enabled, newly introduced states have their probabilities reduced to 0.05.
+    """
+    old_B_mean_value = 1/B[0].shape[0]
     num_states = B[0].shape[0] + add
     new_B = create_B_matrix(num_states, B[0].shape[-1])
+    new_B_mean_value = 1/new_B[0].shape[0]
     #new_B -= 0.9/num_states
     
     slices = tuple([slice(dim) for dim in B[0].shape])
     new_B[slices] = B[0]
     if alter_weights:
-        new_B[new_B == B_mean_value] = 1/num_states - 0.9/num_states 
+        new_B[new_B == old_B_mean_value] = 0.05
+        new_B[new_B == new_B_mean_value] = 0.05
     #If there are values that have not been explored yet, 
-    # their initial values is diminuished according to number of 
-    # the number of states (thus not high proba when never tried)
+    # their initial values is vastly reduced to an arbitrarely number
         
     B[0] = new_B
     return B
@@ -650,31 +836,19 @@ def update_A_matrix_size(A, add_ob=0, add_state=0, null_proba = True):
 #==== Motion inverse ====#
 
 def reverse_action(actions:dict, action:int)->int:
-    actions =  {k.upper(): v for k, v in actions.items()}
-    action_key = list(filter(lambda x: actions[x] == action, actions))[0] 
+    actions = actions.copy()
+    if actions[action] == 'STAY':
+        return action
+    
+    if "STAY" in actions.values():
+        actions.popitem()
 
-    #IF MINIGRID ENV
-    if 'DOWN' in actions.keys(): 
-        if 'LEFT' in action_key: 
-            reverse_action_key = 'RIGHT'
-        elif 'RIGHT' in action_key: 
-            reverse_action_key = 'LEFT'
-        elif 'UP' in action_key: 
-            reverse_action_key = 'DOWN'
-        else:
-            reverse_action_key = 'UP'
+    mid_orientation = (actions[action][0] + actions[action][1]) /2
+    mid_orientation += 180
+    reverse_action_mid_orientation= int(clip_deg_360(mid_orientation))
+    reverse_action_key = [k for k,v in actions.items() if v[0] < reverse_action_mid_orientation and v[1] > reverse_action_mid_orientation]    
 
-    #RW IN DEGREE
-    if list(actions.keys())[0].isdigit():
-        #+180degree and normalise it to 0-360deg
-        if action_key.upper() == 'STAY':
-            return actions[action_key]
-        orientation = float(action_key)
-        orientation += 180
-        reverse_action_key = str(int(clip_deg_360(orientation)))
-
-    reverse_action = actions[reverse_action_key]
-    return reverse_action
+    return reverse_action_key[0]
 
 #==== POLICY GENERATION ====#
 def create_policies(lookahead:int, actions:dict, current_pose:list=(0,0), lookahead_distance:bool=False, simple_paths:bool=True)-> list:
@@ -824,6 +998,40 @@ def round_to_step(value, step):
     """ doesn't expect a step with more than 1 decimal"""
     return round(round(value / step) * step,1)
 
+def BFS_path_gen(dx:int, dy:int, moves:list):
+    """ 
+    based on the Breadth-First Search (BFS) we define the position motion considering all the possible moves.
+    Given position x and y, the path ends when we reach either x or y with the moves, generating paths going in every directions     
+    """
+   # Initialize the queue with the starting point
+    queue = deque([[(0, 0)]])
+    
+    valid_paths = []
+    
+    while queue:
+        path = queue.popleft()
+        x, y = path[-1]
+        
+        # Check all possible moves from the current position
+        for move in moves:
+            new_x, new_y = x + move[0], y + move[1]
+            
+            # Create a new path by extending the current path
+            new_path = path + [(new_x, new_y)]
+            
+            # Check if the new position reaches the desired boundary
+            if (new_x == dx or new_y == dy):
+                valid_paths.append(new_path)
+            # Only add the new path to the queue if it hasn't reached the boundary yet
+            # Ensure this works for both positive and negative dx and dy
+            elif (dx > 0 and new_x <= dx or dx < 0 and new_x >= dx) and (dy > 0 and new_y <= dy or dy < 0 and new_y >= dy):
+                queue.append(new_path)
+    
+    return valid_paths
+
+def visited_pose(position, path):
+    return position in path
+
 def from_degree_to_point(angle_deg:float, tolerance_deg:float=8, pose_dist:float=1) -> tuple:
     """ 
     Take a degree value and project it to the closest integer position considering an 
@@ -863,40 +1071,6 @@ def from_degree_to_point(angle_deg:float, tolerance_deg:float=8, pose_dist:float
     if possible_points:
         return min(possible_points, key=lambda move: abs(np.rad2deg(np.arctan2(move[1], move[0])) - angle_deg))
     return (0, 0)
-
-def BFS_path_gen(dx:int, dy:int, moves:list):
-    """ 
-    based on the Breadth-First Search (BFS) we define the position motion considering all the possible moves.
-    Given position x and y, the path ends when we reach either x or y with the moves, generating paths going in every directions     
-    """
-   # Initialize the queue with the starting point
-    queue = deque([[(0, 0)]])
-    
-    valid_paths = []
-    
-    while queue:
-        path = queue.popleft()
-        x, y = path[-1]
-        
-        # Check all possible moves from the current position
-        for move in moves:
-            new_x, new_y = x + move[0], y + move[1]
-            
-            # Create a new path by extending the current path
-            new_path = path + [(new_x, new_y)]
-            
-            # Check if the new position reaches the desired boundary
-            if (new_x == dx or new_y == dy):
-                valid_paths.append(new_path)
-            # Only add the new path to the queue if it hasn't reached the boundary yet
-            # Ensure this works for both positive and negative dx and dy
-            elif (dx > 0 and new_x <= dx or dx < 0 and new_x >= dx) and (dy > 0 and new_y <= dy or dy < 0 and new_y >= dy):
-                queue.append(new_path)
-    
-    return valid_paths
-
-def visited_pose(position, path):
-    return position in path
 
 def generate_paths_quadrating_area(lookahead, actions_dict):
     """ Generate paths ending everywhere in a sqayer areas """
