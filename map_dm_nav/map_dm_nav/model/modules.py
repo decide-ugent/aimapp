@@ -821,7 +821,7 @@ def update_A_matrix_size(A, add_ob=0, add_state=0, null_proba = True):
     
     new_A = create_A_matrix([num_ob], [num_states], 1)[0]
     if null_proba:
-        new_A[:] = 0
+        new_A[:] = 0.001 #to avoid div 0
     else:
         prev_A_mean_value = 1/A.shape[0]
         new_A[new_A == prev_A_mean_value] = 1/num_ob 
