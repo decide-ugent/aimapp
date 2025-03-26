@@ -186,36 +186,36 @@ def point_in_triangle_with_arc(pt:list, polygon:list)-> bool:
     Determines if a point `pt` lies **inside a triangular region with one curved edge**.
 
     The **polygon** is expected to have **4 points**:
-    - `[odom, start_vector, point_on_arc, end_vector]`
+    - `[arc_center, start_vector, point_on_arc, end_vector]`
     - The **arc** is formed between `start_vector` and `end_vector`, centered at `point_on_arc`.
 
     **Steps:**
-    1. Check if the point is inside the regular **triangle** formed by `odom, start_vector, end_vector`.
+    1. Check if the point is inside the regular **triangle** formed by `arc_center, start_vector, end_vector`.
     2. If not, check if it's inside the **curved region**:
         - The point must be within the **circular range**.
         - The point must be **between** `start_vector` and `end_vector` in a clockwise sense.
 
     Parameters:
         pt (list or tuple): The 2D point `[x, y]` to check.
-        polygon (list of lists): A list of **4 points** `[odom, start_vector, point_on_arc, end_vector]`.
+        polygon (list of lists): A list of **4 points** `[arc_center, start_vector, point_on_arc, end_vector]`.
 
     Returns:
         bool: `True` if `pt` is inside the **triangle-with-arc**, otherwise `False`.
     
     '''
     # point_on_arc = polygon[2]
-    arc_radius = euclidian_distance(polygon[0], polygon[2]) #should be influence_radius*2
-    p1, p2 = polygon[1], polygon[3]
-
+    arc_center, p1, p2 = polygon[0], polygon[1], polygon[3]
+    arc_radius = euclidian_distance(arc_center, polygon[2]) #should be influence_radius*2
+    triangle = [arc_center, p1, p2]
     # Check if inside the triangle
-    if point_in_triangle(pt, polygon):
+    if point_in_triangle(pt, triangle):
         # print(pt,'In triangle')
         return True 
 
     
     # If p2 vector is clocwise from pt and pt is clocwise from p1
     #  and in the circular region, then it's in the zone
-    if is_within_radius_range(pt, polygon[0], arc_radius) and \
+    if is_within_radius_range(pt, arc_center, arc_radius) and \
     is_clokwise_from_p1_to_p2(pt,p2) and not is_clokwise_from_p1_to_p2(pt,p1):
        print(pt,'point_in_triangle_with_arc: In arc')
        return True
