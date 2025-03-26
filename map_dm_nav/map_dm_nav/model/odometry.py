@@ -159,12 +159,12 @@ class PoseOdometry(PoseMemory):
         
         return [next]
     
-    def pose_in_action_range(self, action:int, pose:list, odom:list=None):
+    def pose_in_action_range(self, action:int, pose:list, odom:list=None)->bool:
         
         if odom is None:
             odom = self.odometry.copy()
         if self.possible_actions[action] == 'STAY':
-            return odom
+            return pose[:2] == odom[:2]
         
         zone_influence = self.possible_actions[action][:]
         quadri = quadrilater_points(odom=odom, zone_influence=zone_influence,\
