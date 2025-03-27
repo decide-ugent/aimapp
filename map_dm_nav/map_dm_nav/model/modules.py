@@ -147,6 +147,19 @@ def angle_turn_from_pose_to_p(pose:list, goal_pose:list, in_deg:bool=False):
             angle_pose_to_p = np.rad2deg(angle_pose_to_p)
         return angle_pose_to_p
 
+def pt_between_vectors(pt:list, odom:list, p1:list, p2:list)->bool:
+    '''
+    We expect p2 clockwise vector from p1
+    '''
+    angle1 = clip_rad_360(np.arctan2(p1[1]-odom[1], p1[0]-odom[0]))
+    angle2 = clip_rad_360(np.arctan2(p2[1]-odom[1], p2[0]-odom[0]))
+    angle = clip_rad_360(np.arctan2(pt[1]-odom[1], pt[0]-odom[0]))
+    if angle2 == 0.0:
+        angle2 = 2*np.pi
+    print('pt_between_vectors', round(np.rad2deg(angle1),2) ,'<=', round(np.rad2deg(angle),2), '<=',round(np.rad2deg(angle2),2))
+    return angle1 <= angle <= angle2
+  
+
 def is_clokwise_from_p1_to_p2(p1:list, p2:list)->bool:
     ''' 
     Determines whether `p2` is in the **clockwise direction** from `p1`.
@@ -216,7 +229,7 @@ def point_in_triangle_with_arc(pt:list, polygon:list)-> bool:
     # If p2 vector is clocwise from pt and pt is clocwise from p1
     #  and in the circular region, then it's in the zone
     if is_within_radius_range(pt, arc_center, arc_radius) and \
-    is_clokwise_from_p1_to_p2(pt,p2) and not is_clokwise_from_p1_to_p2(pt,p1):
+        pt_between_vectors(pt, arc_center, p1,p2):
        print(pt,'point_in_triangle_with_arc: In arc')
        return True
 
