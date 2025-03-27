@@ -156,7 +156,7 @@ def pt_between_vectors(pt:list, odom:list, p1:list, p2:list)->bool:
     angle = clip_rad_360(pt_vector_angle_to_ref_pt(pt, odom))
     if angle2 == 0.0:
         angle2 = 2*np.pi
-    print('pt_between_vectors', round(np.rad2deg(angle1),2) ,'<=', round(np.rad2deg(angle),2), '<=',round(np.rad2deg(angle2),2))
+    #print('pt_between_vectors', round(np.rad2deg(angle1),2) ,'<=', round(np.rad2deg(angle),2), '<=',round(np.rad2deg(angle2),2))
     return angle1 <= angle <= angle2
   
 def pt_vector_angle_to_ref_pt(pt:list, odom:list):
