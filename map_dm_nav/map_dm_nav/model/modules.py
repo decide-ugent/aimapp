@@ -151,14 +151,16 @@ def pt_between_vectors(pt:list, odom:list, p1:list, p2:list)->bool:
     '''
     We expect p2 clockwise vector from p1
     '''
-    angle1 = clip_rad_360(np.arctan2(p1[1]-odom[1], p1[0]-odom[0]))
-    angle2 = clip_rad_360(np.arctan2(p2[1]-odom[1], p2[0]-odom[0]))
-    angle = clip_rad_360(np.arctan2(pt[1]-odom[1], pt[0]-odom[0]))
+    angle1 = clip_rad_360(pt_vector_angle_to_ref_pt(p1, odom))
+    angle2 = clip_rad_360(pt_vector_angle_to_ref_pt(p2, odom))
+    angle = clip_rad_360(pt_vector_angle_to_ref_pt(pt, odom))
     if angle2 == 0.0:
         angle2 = 2*np.pi
     print('pt_between_vectors', round(np.rad2deg(angle1),2) ,'<=', round(np.rad2deg(angle),2), '<=',round(np.rad2deg(angle2),2))
     return angle1 <= angle <= angle2
   
+def pt_vector_angle_to_ref_pt(pt:list, odom:list):
+    return clip_rad_360(np.arctan2(pt[1]-odom[1], pt[0]-odom[0]))
 
 def is_clokwise_from_p1_to_p2(p1:list, p2:list)->bool:
     ''' 

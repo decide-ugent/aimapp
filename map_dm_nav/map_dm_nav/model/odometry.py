@@ -1,5 +1,5 @@
 import numpy as np
-from .modules import euclidian_distance, clip_rad_360,\
+from .modules import euclidian_distance, clip_rad_360,pt_vector_angle_to_ref_pt, \
                     from_degree_to_point, quadrilater_points, point_in_triangle_with_arc
 
 class PoseMemory(object):
@@ -124,7 +124,7 @@ class PoseOdometry(PoseMemory):
         else:
             print('motion_without_memory:NOT IMPLEMENTED ODOM FOR POSE LEN >2')
     
-    def update_odom_given_pose(self, pose):
+    def update_odom_given_pose(self, pose:list)-> None:
         p = pose
         if len(p) == 2: #(xy)
             diff = [p[0] - self.odometry[0], p[1]- self.odometry[1]]
@@ -135,9 +135,15 @@ class PoseOdometry(PoseMemory):
             self.odometry[0] = float(p[0])
             self.odometry[1] = float(p[1])
             print('in pose odom, vtrans:',vtrans,' vrot:', vrot,' odom:', self.odometry)
-            return vtrans , vrot
         
         print('ERROR in PoseOdometry', pose)
+
+    def update_odom_given_action(self, action:int, ideal_motion_dist:float)->None:
+        """NOT RECOMMENDED as ideal pose could be way off from current pose"""
+        pose_in_action_range = self.pose_transition_from_action(action, ideal_dist=ideal_motion_dist)
+        self.odometry[2]  = pt_vector_angle_to_ref_pt(pose_in_action_range, odom=self.odometry[:2])
+        self.odometry[0] = float(pose_in_action_range[0])
+        self.odometry[1] = float(pose_in_action_range[1])
     
     def get_sequential_actions(self,last=None, next=None, odom:list=None) -> list:
         """ 
