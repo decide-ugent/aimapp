@@ -165,16 +165,18 @@ class PoseOdometry(PoseMemory):
         
         return [next]
     
-    def pose_in_action_range(self, action:int, pose:list, odom:list=None)->bool:
-        
+    def pose_in_action_range(self, action:int, pose:list, odom:list=None, influence_radius:float=None)->bool:
         if odom is None:
             odom = self.odometry.copy()
         if self.possible_actions[action] == 'STAY':
             return pose[:2] == odom[:2]
         
+        if influence_radius is None:
+            influence_radius = self.influence_radius
+        
         zone_influence = self.possible_actions[action][:]
         quadri = quadrilater_points(odom=odom, zone_influence=zone_influence,\
-                                     influence_radius= self.influence_radius)
+                                     influence_radius= influence_radius)
         
         return point_in_triangle_with_arc(pose[:2], quadri)
 
