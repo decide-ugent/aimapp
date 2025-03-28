@@ -34,7 +34,7 @@ class PanoramaMultipleCamClient(Node):
 
         return self.panorama_result
 
-    def send_panorama_goal(self, n_turn_stops:int=2,possible_actions:int=6):
+    def send_panorama_goal(self, n_turn_stops:int=2,n_actions:int=6):
         """ 
         ACTION
         Receive the number of stop to do during a 360* turn 
@@ -52,7 +52,7 @@ class PanoramaMultipleCamClient(Node):
             angle = goal_angles[-1] + angle_rot
             goal_angles.append(angle)
         goal_msg.goal_angles = goal_angles
-        goal_msg.actions_dict = possible_actions
+        goal_msg.n_actions = n_actions
 
         self.get_panorama.wait_for_server()
         self.panorama_status = GoalStatus.STATUS_EXECUTING

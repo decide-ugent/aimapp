@@ -91,7 +91,7 @@ class Ours_V5_RW(Agent):
             None
         """
       
-
+        self.init_policies()
         self.reset(start_pose=self.PoseMemory.get_poses_from_memory()[0])
         if self.edge_handling_params["use_BMA"] and hasattr(self, "q_pi_hist"): #This is not compatible with our way of moving
             del self.q_pi_hist
@@ -105,6 +105,25 @@ class Ours_V5_RW(Agent):
         self.infer_states(observation = observations, partial_ob=None)
         return 
     
+    def init_policies(self, E=None):
+        policies = create_policies(self.policy_len, self.possible_actions, lookahead_distance=self.lookahead_distance,simple_paths= self.simple_paths)
+        self.policies = policies
+        assert all([len(self.num_controls) == policy.shape[1] for policy in self.policies]), "Number of control states is not consistent with policy dimensionalities"
+        
+        all_policies = np.vstack(self.policies)
+
+        assert all([n_c >= max_action for (n_c, max_action) in zip(self.num_controls, list(np.max(all_policies, axis =0)+1))]), "Maximum number of actions is not consistent with `num_controls`"
+        # Construct prior over policies (uniform if not specified) 
+        if E is not None:
+            if not isinstance(E, np.ndarray):
+                raise TypeError(
+                    'E vector must be a numpy array'
+                )
+            self.E = E
+            assert len(self.E) == len(self.policies), f"Check E vector: length of E must be equal to number of policies: {len(self.policies)}"
+        else:
+            self.E = self._construct_E_prior()
+
     def reset(self, init_qs:np.ndarray=None, start_pose:tuple=None):
         """
         Resets the agent's posterior beliefs about hidden states to a uniform distribution 
@@ -200,6 +219,7 @@ class Ours_V5_RW(Agent):
 
         return possible_actions
 
+    
     #==== TEST&VISU PURPOSES ONLY ====#
     def update_agent_state_mapping(self, pose:tuple, ob:list, state_belief:list=None)-> dict:
         """ Dictionnary to keep track of believes and associated obs, usefull for testing purposes"""
@@ -249,7 +269,19 @@ class Ours_V5_RW(Agent):
         return self.curr_timestep
     def get_possible_actions(self):
         return self.possible_actions
+    def set_memory_views(self, views):
+        self.ViewMemory = views
+    def get_memory_views(self):
+        return self.ViewMemory
     
+    def get_agent_state_mapping(self)->dict:
+        return self.agent_state_mapping
+    
+    def get_B(self):
+        return self.B[0]
+    
+    def get_A(self):
+        return self.A
     def get_current_most_likely_pose(self, z_score:float, min_z_score:float=2, observations:list=[])->int:
         """
         Given a z_scores (usually around 2), is the agent certain about the state. If it is, to which pose does it correspond?
@@ -408,7 +440,7 @@ class Ours_V5_RW(Agent):
             self.current_pose = self.PoseMemory.get_odom(as_tuple=True)[:2]
         return self.current_pose
     
-    def infer_action(self, **kwargs):
+    def infer_action(self, logs=None, **kwargs):
         """
         return the best action to take
         possible params (as a dict):
@@ -420,8 +452,9 @@ class Ours_V5_RW(Agent):
         return action as int and info as dict
         """
         observations = kwargs.get('observations', None)
-        next_possible_actions = kwargs.get('next_possible_actions', list(self.possible_actions.values()))
-
+        next_possible_actions = kwargs.get('next_possible_actions', list(self.possible_actions.keys()))
+        if logs is not None:
+            logs.info('observations'+ str(observations)+ 'next_possible_actions'+ str(next_possible_actions))
         # prior = self.get_belief_over_states()
         
         #If we are not inferring state at each state during the model update, we do it here
@@ -440,14 +473,19 @@ class Ours_V5_RW(Agent):
             
             posterior = self.infer_states(observation = observations, partial_ob=partial_ob, save_hist=True)
             # print('infer action: self.current_pose', self.current_pose, posterior[0].round(3))
-
+        if logs is not None:
+            logs.info('still there')
         #In case we don't have observations.
         posterior = self.get_belief_over_states()
         print('infer action: inferred prior state', posterior[0].round(3))
-        q_pi, efe, info_gain, utility = self.infer_policies(posterior)
-        
+        q_pi, efe, info_gain, utility = self.infer_policies(posterior, logs=logs)
+        if logs is not None:
+            logs.info('catching up here')
         poses_efe = None
         action = self.sample_action(next_possible_actions)
+
+        if logs is not None:
+            logs.info('no problem here')
         #TODO: switch back to sample_action once tests done
         # action, poses_efe = self.sample_action_test(next_possible_actions)
         
@@ -465,7 +503,7 @@ class Ours_V5_RW(Agent):
             data['poses_efe'] = poses_efe
         return int(action), data
     
-    def infer_policies(self, qs=None):
+    def infer_policies(self, qs=None, logs=None):
         """
         Perform policy inference by optimizing a posterior (categorical) distribution over policies.
         This distribution is computed as the softmax of ``G * gamma + lnE`` where ``G`` is the negative expected
@@ -482,35 +520,37 @@ class Ours_V5_RW(Agent):
         if qs is None:
             qs = self.qs
 
-        if self.inference_algo == "VANILLA":
-            #If we want to increase the precision of the utility 
-            # term on A, we can play with the section below.
-            #Currently unused 
-            if self.use_utility:
-                A = copy.deepcopy(self.A)
-                # for modality, array in enumerate(A[0]):
-                #     # Compute normalization
-                #     summed = array.sum(axis=0, keepdims=True)
-                #     # print(summed)
-                #     A[0][modality] = array * 10 / summed
-            else:
-                A = self.A
-            q_pi, G, info_gain, utility = update_posterior_policies(
-                qs,
-                A,
-                self.B,
-                self.C,
-                self.policies,
-                self.use_utility,
-                self.use_states_info_gain,
-                self.use_param_info_gain,
-                self.pA,
-                self.pB,
-                E = self.E,
-                gamma = self.gamma,
-                diff_policy_len = self.lookahead_distance
-            )
-        
+        #If we want to increase the precision of the utility 
+        # term on A, we can play with the section below.
+        #Currently unused 
+        if self.use_utility:
+            A = copy.deepcopy(self.A)
+            # for modality, array in enumerate(A[0]):
+            #     # Compute normalization
+            #     summed = array.sum(axis=0, keepdims=True)
+            #     # print(summed)
+            #     A[0][modality] = array * 10 / summed
+        else:
+            A = self.A
+
+        logs.info('update_posterior_policies?')
+        q_pi, G, info_gain, utility = update_posterior_policies(
+            qs,
+            A,
+            self.B,
+            self.C,
+            self.policies,
+            self.use_utility,
+            self.use_states_info_gain,
+            self.use_param_info_gain,
+            self.pA,
+            self.pB,
+            E = self.E,
+            gamma = self.gamma,
+            diff_policy_len = self.lookahead_distance,
+            logs= logs
+        )
+        logs.info('hasattr(self, "q_pi_hist")'+ str(hasattr(self, "q_pi_hist")))
         if hasattr(self, "q_pi_hist"):
             self.q_pi_hist.append(q_pi)
             if len(self.q_pi_hist) > self.inference_horizon:

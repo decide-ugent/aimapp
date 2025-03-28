@@ -152,7 +152,7 @@ class GeneratePanoramaMultipleCam(Node):
         images_compilation = []
         image_batch = 0
 
-        actions_range = generate_action_range(n_actions)
+        actions_range = self.generate_action_range(n_actions)
         #Just to be safe and ensure we received all callback data
         while self.robot_odom is None:
             self.execution_rate.sleep()
@@ -228,7 +228,7 @@ class GeneratePanoramaMultipleCam(Node):
         for id, scan_info in enumerate(scan):
             
             curr_ray_angle_deg_prev = \
-            (np.rad2deg(self.position[2]) + \
+            (np.rad2deg(self.robot_odom[2]) + \
              np.rad2deg(angle_min) + (id * angle_increment))
             curr_ray_angle_deg = curr_ray_angle_deg_prev % 360 
             #self.get_logger().info(f'curr_ray_angle_deg, ob_dist: {id} {round(curr_ray_angle_deg_prev,1)} {round(curr_ray_angle_deg,1)} {round(scan_info,2)}')

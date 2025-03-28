@@ -31,15 +31,15 @@ class HighLevelNav_ROSInterface(Node):
         self.goal_path = goal_path
 
         #dist motion in m 
-        self.dist_th = 2
-        self.add_mandatory_free_dist = 0.15
+        self.influence_radius = 1
+        self.robot_dim = 0.3
         #The lidar must say that there is X free dist behind position to consider it free #security
 
         self.panorama_client = PanoramaMultipleCamClient()
 
   
-        self.motion_client = Nav2Client()
-        #self.motion_client = PFClient()
+        # self.motion_client = Nav2Client()
+        self.motion_client = PFClient()
 
         self.img_bridge = CvBridge()
         self.panorama_results = None
@@ -76,7 +76,7 @@ class HighLevelNav_ROSInterface(Node):
             #create model
             self.model = Ours_V5_RW(num_obs=2, num_states=2, dim=2, \
                                     observations=[ob_id], lookahead_policy=5,\
-                                    n_actions=13, influence_radius=0.5,robot_dim=0.3)
+                                    n_actions=13, influence_radius=self.influence_radius,robot_dim=self.robot_dim)
             
             self.model.set_memory_views(self.Views.get_memory_views())
             self.model.update_transition_nodes(obstacle_dist_per_actions=obstacle_dist_per_actions)
@@ -180,7 +180,6 @@ class HighLevelNav_ROSInterface(Node):
     
     def get_panorama(self, n_directions:int):
         """ 
-        
         Get panorama, if the image does not generate one, 
         then retry up to 5 times while reducing the confidence threshold. 
         If we failed to get a panorama after 4 tries. We raise an error
@@ -222,11 +221,14 @@ class HighLevelNav_ROSInterface(Node):
         ongoing_try = 0
         possible_actions = self.model.possible_actions.copy()
         max_try = len(possible_actions)-1
-       
         while not goal_reached and ongoing_try < max_try:
             current_pose = self.model.PoseMemory.get_odom().copy()
             if action is None:
-                action, data = self.model.infer_action(observations=[ob_id],next_possible_actions=list(possible_actions.values()))
+                self.get_logger().info('action: ' + str(action) + ', ob_id: '+ str(ob_id)+ \
+                                        'current pose' + str(self.model.current_pose))
+                action, data = self.model.infer_action(observations=[ob_id],next_possible_actions=list(possible_actions.keys()), logs=self.get_logger())
+                self.get_logger().info('action: ' + str(action) + ', ob_id: '+ str(ob_id)+ \
+                                        'current pose' + str(self.model.current_pose))
             ##compare current odom to desired orientation/pose to go and determine the pose to reach
             pose_goal, next_pose_id = self.model.determine_next_pose(action)
             if next_pose_id == -1 :
@@ -254,7 +256,7 @@ class HighLevelNav_ROSInterface(Node):
                 # save_failed_step_data(copy.deepcopy(self.model), None, np.array([0,0]), [0], list(possible_actions.values()), \
                 # [0], [0], self.gt_odom, action_success=False, elapsed_time=elapsed_time, store_path=self.store_dir, action_select_data=data)
                 # self.save_model()
-                possible_actions = {key:val for key, val in possible_actions.items() if val != action} #We remove tried action from list
+                possible_actions = {key:val for key, val in possible_actions.items() if key != action} #We remove tried action from list
                 self.model.PoseMemory.reset_odom(current_pose) #We reset believed odom to previous state
             
                 action = None #we infer action trhis time
@@ -295,10 +297,10 @@ class HighLevelNav_ROSInterface(Node):
         goal_reached, pose= self.motion_client.go_to_pose(goal_pose)
         if not goal_reached: 
             #if we are one third near the goal, let's say it's ok
-            if np.allclose(pose[:2], goal_pose[:2], atol=self.dist_th/3):
+            if np.allclose(pose[:2], goal_pose[:2], atol=self.influence_radius/3):
                 goal_reached = True
                 self.get_logger().info('Goal ' + str(goal_pose) + \
-                            'reached with tolerance: ' + str(self.dist_th/3)+'m, ended PF at pose '+ str(pose))
+                            'reached with tolerance: ' + str(self.influence_radius/3)+'m, ended PF at pose '+ str(pose))
             else:
                 self.get_logger().info('Goal ' + str(goal_pose) + \
                             ' not reached, ended PF at pose '+ str(pose))
@@ -361,8 +363,8 @@ def main(args=None):
     
     highlevelnav = HighLevelNav_ROSInterface(load_model, goal_path)
    
-    store_dir = create_save_data_dir()
-    highlevelnav.store_dir = store_dir
+    # store_dir = create_save_data_dir()
+    # highlevelnav.store_dir = store_dir
 
     
     """
@@ -386,7 +388,7 @@ def main(args=None):
         highlevelnav.motion_client.set_initial_pose()
 
 
-    ob_id, ob_match_score = highlevelnav.initialise_model(possible_actions)
+    obstacle_dist_per_actions,ob_id, ob_match_score = highlevelnav.initialise_model(possible_actions)
 
     highlevelnav.set_navigation_mode()
     # save_data_process(highlevelnav, ob_id=ob_id, ob_match_score= ob_match_score, store_dir=store_dir)
