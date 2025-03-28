@@ -12,11 +12,9 @@ import cv2
 from sensor_msgs.msg import Image
 from map_dm_nav.motion.potential_field_client import PFClient
 from map_dm_nav.motion.nav2_client import Nav2Client
-from map_dm_nav.obs_transf.get_panorama_client import PanoramaClient
 from map_dm_nav.obs_transf.get_pano_multiple_camera_client import PanoramaMultipleCamClient
-from map_dm_nav.obs_transf.get_360_camera_client import Panorama360CamClient
 from map_dm_nav.obs_transf.observation_match import ViewMemory
-from map_dm_nav.model.V4_2 import Ours_V4_RW1
+from map_dm_nav.model.V5 import Ours_V5_RW
 #visualisations
 from map_dm_nav.visualisation_tools import create_save_data_dir, save_failed_step_data, remove_white_border,\
                                                     save_step_data, save_efe_plot,pickle_load_model, pickle_dump_model, plot_state_in_map_wt_gt
@@ -37,8 +35,6 @@ class HighLevelNav_ROSInterface(Node):
         self.add_mandatory_free_dist = 0.15
         #The lidar must say that there is X free dist behind position to consider it free #security
 
-        #self.panorama_client = PanoramaClient()
-        #self.panorama_client = Panorama360CamClient()
         self.panorama_client = PanoramaMultipleCamClient()
 
   
@@ -67,7 +63,7 @@ class HighLevelNav_ROSInterface(Node):
        
     #==== INITIALISATION METHODS ====#
 
-    def initialise_model(self, possible_actions:dict)-> None:
+    def initialise_model(self, n_actions:int)-> None:
         """ With first panorama.
           We setup the model and incorporates the first ghost nodes
         """
@@ -75,14 +71,15 @@ class HighLevelNav_ROSInterface(Node):
         self.Views = ViewMemory() #not in model because i can't pickle it
                                
         if self.load_model == 'None':
-            ob_id, ob_match_score = self.get_panorama(possible_actions)
+            #TODO: UPDATE PANORAMA TO KNOW ACTION RANGE
+            obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(n_actions)
             #create model
-            self.model = Ours_V4_RW1(num_obs=2, num_states=2, dim=2, \
-                                    observations=[ob_id], lookahead=5,\
-                        actions=possible_actions, inference_algo='VANILLA', \
-                            pose_dist_th=self.dist_th)
+            self.model = Ours_V5_RW(num_obs=2, num_states=2, dim=2, \
+                                    observations=[ob_id], lookahead_policy=5,\
+                                    n_actions=13, influence_radius=0.5,robot_dim=0.3)
+            
             self.model.set_memory_views(self.Views.get_memory_views())
-            self.add_ghost_nodes(ob_id)
+            self.model.update_transition_nodes(obstacle_dist_per_actions=obstacle_dist_per_actions)
            
         
         else:
@@ -90,8 +87,7 @@ class HighLevelNav_ROSInterface(Node):
             self.model = pickle_load_model(self.load_model)
             self.Views.set_memory_views(self.model.get_memory_views())
             #tfself.model.policy_len = 5
-            ob_id, ob_match_score = self.get_panorama(possible_actions)
-            self.next_possible_actions = self.get_next_possible_actions()
+            obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(n_actions)
             self.get_logger().info('POSE: ' + str(self.model.PoseMemory.get_odom())+','+str(self.model.current_pose))
 
             #self.model.reset()
@@ -105,7 +101,7 @@ class HighLevelNav_ROSInterface(Node):
         self.save_model()
         
         print('initialised model', self.model)
-        return ob_id, ob_match_score
+        return obstacle_dist_per_actions, ob_id, ob_match_score
 
     def add_ghost_nodes(self,first_ob_id:int)-> None:
         """ 
@@ -143,7 +139,6 @@ class HighLevelNav_ROSInterface(Node):
             self.model.explo_oriented_navigation()
             self.get_logger().info('We are exploring aimlessly')
             
-
     #==== MODEL UPDATE METHOD ====#
     def model_step_process(self, action:int): # -> tuple([np.ndarray, int, list]):
         """
@@ -155,70 +150,48 @@ class HighLevelNav_ROSInterface(Node):
         feed the ob id and next poss actions to the model to update it 
         return the observation panorama, the ob_id and the next_poss_actions
         """
-        agent_possible_directions = self.model.get_possible_directions()
+        agent_possible_directions = self.model.get_possible_actions()
 
         # start_time = time.time() 
-        ob_id, ob_match_score = self.get_panorama(agent_possible_directions)
+        obstacle_dist_per_actions,ob_id, ob_match_score = self.get_panorama(len(agent_possible_directions))
         # self.get_logger().warn("---GET PANORAMA %s seconds ---" % round(time.time() - start_time,3))
         #convert lidar scan in "can we go in that direction", considering the model directions
-        self.next_possible_actions = self.get_next_possible_actions() #this will not have 'STAY' in it.
+
         if 'STAY' in agent_possible_directions.keys():
             self.next_possible_actions.append([agent_possible_directions['STAY'],1])
-        self.model.agent_step_update(action,[ob_id],self.next_possible_actions)
+        self.model.agent_step_update(action,[ob_id, obstacle_dist_per_actions])
         #self.get_logger().info('QS: ' + str(self.model.get_belief_over_states()[0]) + 'len '+ str(len(self.model.get_belief_over_states()[0])))
         #self.get_logger().info('POSE: ' + str(self.model.PoseMemory.get_odom())+','+str(self.model.current_pose))
-        return ob_id, ob_match_score
+        return obstacle_dist_per_actions, ob_id, ob_match_score
     
     #==== GET METHODS ====#
-    def get_n_pictures(self,possible_actions)->int:
+    def get_n_pictures(self,n_actions)->int:
         ''' how many turns to generate a panorama with 3 cameras
         we generate as many turns as we have orientations'''
-        
-        n_turns = 2
-        # if 'STAY' in possible_actions.keys():
-        #     n_turns-=1
-        return n_turns
+        if n_actions % 2 !=0:
+            n_actions -= 1
+
+        n_turn = 2
+        return n_turn, n_actions
     
     def get_current_timestep(self)->int:
         """ To keep track of where we are in process """
         return self.model.get_current_timestep()
-
-    def get_next_possible_actions(self)-> list:
-        """ Given the scan detections, their corresponding orientations, and the possible directions 
-        and distances the agent can move, we can determine the areas where the agent is able 
-        to navigate and those it should avoid.
-        It returns a list of the actions it can takes and how far it can go in that direction
-        format :[[action, number_of_states_in_that_direction],...]
-
-        NOTE: this does not clean double orientations with different diatances. 
-        """
-        next_poss_directions = self.define_possible_directions(self.panorama_results.pano_scan, \
-                                self.panorama_results.orientations)
-        possible_directions = {int(k): v for k, v in self.model.possible_directions.items() if k != 'STAY'}
-        #Let's add 360 to the orientation under 15. So to have comparable values all way round
-        possible_directions.update({k + 360: v for k, v in possible_directions.items() if k < 15})
-        next_poss_actions = [
-                [int(value), int(n_states)] 
-                for key, value in possible_directions.items() 
-                for orientation, n_states in next_poss_directions
-                if abs(orientation - key) <= 15
-                ]  #[[action,n_states],...]
-
-        self.get_logger().info('next_poss_actions:'+str(next_poss_actions))
-        return next_poss_actions
     
-    def get_panorama(self, n_directions:dict):
-        """ Get panorama, if the image does not generate one, 
+    def get_panorama(self, n_directions:int):
+        """ 
+        
+        Get panorama, if the image does not generate one, 
         then retry up to 5 times while reducing the confidence threshold. 
         If we failed to get a panorama after 4 tries. We raise an error
         """
         ongoing_try = 0
         ob_id = None
         conf_threshold=0.9
-        n_pics = self.get_n_pictures(n_directions)
+        n_pics, n_actions = self.get_n_pictures(n_directions)
         while not isinstance(ob_id,int) and ongoing_try < 5:
             #we turn 360deg to get a panorama 
-            self.panorama_results = self.panorama_client.turn_to_get_panorama(n_turn_stops=n_pics) 
+            self.panorama_results = self.panorama_client.turn_to_get_panorama(n_turn_stops=n_pics, n_actions=n_actions) 
                                                     #how many scans/images we take in a 360deg turn
             #Convert observations into cv2 and feed them to our View model to determine if it's new
             ob = self.from_ros_to_cv2(self.panorama_results.panorama)
@@ -237,17 +210,17 @@ class HighLevelNav_ROSInterface(Node):
             raise ValueError('No panorama generated, ob id is not an integer, we cannot update model.')
         if self.model is not None:
             self.model.set_memory_views(self.Views.get_memory_views())
-        return ob_id, ob_match_score
+        return self.panorama_results.pano_scan, ob_id, ob_match_score
         
     #==== MOTIONS METHODS ====#
-    def define_next_objective(self, prev_action:int, action:int, ob_id:int=None): #-> tuple([int, dict])
+    def define_next_objective(self, action:int, ob_id:int=None): #-> tuple([int, dict])
         """ We define the next action and/or determine where we should go and move there.
         If we fail, we can retry a few time, deepending on the number of actions we have, 
         but if even after a few tries we can't reach any goals. We consider the robot stucks """
         data = None
         goal_reached = False
         ongoing_try = 0
-        possible_actions = self.model.possible_directions.copy()
+        possible_actions = self.model.possible_actions.copy()
         max_try = len(possible_actions)-1
        
         while not goal_reached and ongoing_try < max_try:
@@ -255,30 +228,32 @@ class HighLevelNav_ROSInterface(Node):
             if action is None:
                 action, data = self.model.infer_action(observations=[ob_id],next_possible_actions=list(possible_actions.values()))
             ##compare current odom to desired orientation/pose to go and determine the pose to reach
-            pose_goal = self.model.PoseMemory.get_sequential_actions(prev_action, action, possible_actions)
-            
+            pose_goal, next_pose_id = self.model.determine_next_pose(action)
+            if next_pose_id == -1 :
+                self.get_logger().error('POSE GOAL ',pose_goal,' is not known by model, IT WILL FAIL')
+            pose_goal = self.model.PoseMemory.id_to_pose(next_pose_id) #just to be sure we are aiming as close as possible to known state
+
             #if action is not an int but a pose, we convert it to action
-            if not isinstance(action, int):
-                action = self.model.PoseMemory.from_pose_to_action(action, possible_actions)
+            # if not isinstance(action, int):
+            #     action = self.model.PoseMemory.from_pose_to_action(action, possible_actions)
             ##we turn and go forward considering action direction
      
-            for next_pose in pose_goal:
-                self.model.infer_pose(next_pose)
+            self.model.infer_pose(pose_goal)
             self.get_logger().info('step:'+ str(self.model.get_current_timestep()))
             self.get_logger().info('action: ' + str(action)+ ', pose_goal: ' + str(pose_goal) \
                                         + ', odom:'+ str(current_pose))
             #We go to that internally estimated position
-            goal_reached, self.gt_odom = self.reach_position(pose_goal[0])#self.model.PoseMemory.get_odom())
+            goal_reached, self.gt_odom = self.reach_position(pose_goal)#self.model.PoseMemory.get_odom())
             #If we failed to reach goal, we retry from previous odom and by inferring action.
             if not goal_reached:
                 self.get_logger().info('returning to previous pose')
-                elapsed_time = int(time.time() - self.start_time)
+                # elapsed_time = int(time.time() - self.start_time)
 
-                self.model.update_B_given_unreachable_pose(pose_goal[0], action)
+                # self.model.update_B_given_unreachable_pose(pose_goal, action)
                 
-                save_failed_step_data(copy.deepcopy(self.model), None, np.array([0,0]), [0], list(possible_actions.values()), \
-                [0], [0], self.gt_odom, action_success=False, elapsed_time=elapsed_time, store_path=self.store_dir, action_select_data=data)
-                self.save_model()
+                # save_failed_step_data(copy.deepcopy(self.model), None, np.array([0,0]), [0], list(possible_actions.values()), \
+                # [0], [0], self.gt_odom, action_success=False, elapsed_time=elapsed_time, store_path=self.store_dir, action_select_data=data)
+                # self.save_model()
                 possible_actions = {key:val for key, val in possible_actions.items() if val != action} #We remove tried action from list
                 self.model.PoseMemory.reset_odom(current_pose) #We reset believed odom to previous state
             
@@ -362,11 +337,6 @@ def save_data_process(highlevelnav:object, ob_id:int, ob_match_score:list,\
     if data is not None and 'poses_efe' in data:
         save_efe_plot(data['poses_efe'],highlevelnav.get_current_timestep(),store_dir)
 
-def manual_step_update(highlevelnav:object,action:int)-> object:
-    highlevelnav.model.action = np.array([action])
-    highlevelnav.model.step_time()
-    return highlevelnav
-
 def process_path(goal_path: str):
     """ extract image from goal path"""
     # Check if the path exists and is a file
@@ -384,7 +354,6 @@ def process_path(goal_path: str):
         return None
     return image
 
-
 def main(args=None):
     rclpy.init(args=args)
     load_model = sys.argv[2] if len(sys.argv) > 2 else 'None'
@@ -400,9 +369,8 @@ def main(args=None):
     ** Initialise MODEL **
     """
 
-    possible_actions = {'0':0, '45':1, '90':2,'135':3,
-                        '180':4, '225':5, '270':6, '315':7, 'STAY':8}
-    policy = [None] * 60
+    possible_actions = 13 # circle / 12 + STAY action
+    policy = [None] * 3
     #policy = [(1,0),(1,1),(0,1), (0,0)]
     #policy = [6, 5, 6, 0, 3, 5, 0, 1, 4, 4, 7, 4, 2, 3, 0, 6, 8, 5, 4, 4, 2, 1, 1, 4, 1, 4, 8] #an action is a direction to take in global coordinate (0:0degree in GP)
     
@@ -421,27 +389,24 @@ def main(args=None):
     ob_id, ob_match_score = highlevelnav.initialise_model(possible_actions)
 
     highlevelnav.set_navigation_mode()
-    save_data_process(highlevelnav, ob_id=ob_id, ob_match_score= ob_match_score, store_dir=store_dir)
+    # save_data_process(highlevelnav, ob_id=ob_id, ob_match_score= ob_match_score, store_dir=store_dir)
     
     """
     ** RUN MODEL **
     """
-    prev_action = 0  #init start direction #we set the first orientation as 0
     for action in policy:
     
-        action, action_data = highlevelnav.define_next_objective(prev_action, action, ob_id)
+        action, action_data = highlevelnav.define_next_objective(action, ob_id)
 
         #NOTE: UPDATE MODEL INTERNAL ACTION MANUALLY WHEN GIVEN A STATIC POLICY
         if action_data is None:
-            manual_step_update(highlevelnav, action)
+            highlevelnav.model.set_action_step(action)
         
-        prev_action = highlevelnav.model.action[0] #only useful for HotEncodeACtionOdometry
-        ob_id, ob_match_score = highlevelnav.model_step_process(action)
-        p_idx = highlevelnav.model.initialise_current_pose(observations= [ob_id], z_score=5)
-        start_time = time.time()
+        obstacle_dist_per_actions, ob_id, ob_match_score = highlevelnav.model_step_process(action)
+        p_idx = highlevelnav.model.infer_current_most_likely_pose(observations= [ob_id], z_score=5)
         highlevelnav.get_logger().info('POSE: ' +str(highlevelnav.model.PoseMemory.get_odom())+','+str(highlevelnav.model.current_pose) + 'p_idx: ' + str(p_idx))
         highlevelnav.share_believed_odom(p_idx) #send internally believed pose to /odom so it matches internal belief
-        save_data_process(highlevelnav, ob_id, ob_match_score, store_dir= store_dir, data= action_data)
+        #save_data_process(highlevelnav, ob_id, ob_match_score, store_dir= store_dir, data= action_data)
         #highlevelnav.get_logger().warn("---SAVE DATA PROCESS %s seconds ---" % round(time.time() - start_time,3))
 
         # plot_panorama_memories_and_odom(highlevelnav)

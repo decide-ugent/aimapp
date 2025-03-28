@@ -18,7 +18,7 @@
   <depend>builtin_interfaces</depend>
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>high_level_nav_actions</depend>
+  <depend>map_dm_nav_actions</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

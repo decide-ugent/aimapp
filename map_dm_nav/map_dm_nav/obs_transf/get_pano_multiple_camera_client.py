@@ -3,7 +3,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
-from high_level_nav_actions.action import Panorama      
+from map_dm_nav_actions.action import Panorama      
 from action_msgs.msg import GoalStatus
 import argparse
 
@@ -17,14 +17,14 @@ class PanoramaMultipleCamClient(Node):
         self.panorama_status = GoalStatus.STATUS_EXECUTING
         self.panorama_result = None                             
 
-    def turn_to_get_panorama(self, n_turn_stops:int=2):
+    def turn_to_get_panorama(self, n_turn_stops:int=2, n_actions:int=6):
         '''
         turn 360degree and take n_turn_stops image of the surrounding. 
         n_turn_stops must be >=0 to the number of direction the agent 
         can take, the agent is advised to take images in the directions it can go
         return result
         '''
-        panorama_future = self.send_panorama_goal(n_turn_stops)
+        panorama_future = self.send_panorama_goal(n_turn_stops,n_actions)
         rclpy.spin_until_future_complete(self, panorama_future)
         # print(panorama_future.__dict__)
         # print(highlevelnav.panorama_status)
@@ -34,7 +34,7 @@ class PanoramaMultipleCamClient(Node):
 
         return self.panorama_result
 
-    def send_panorama_goal(self, n_turn_stops:int=8):
+    def send_panorama_goal(self, n_turn_stops:int=2,possible_actions:int=6):
         """ 
         ACTION
         Receive the number of stop to do during a 360* turn 
@@ -42,7 +42,7 @@ class PanoramaMultipleCamClient(Node):
         """
         goal_msg = Panorama.Goal()
 
-        angle_rot = np.pi/5
+        angle_rot = np.pi/4
         if n_turn_stops > 0:
             goal_angles = [angle_rot]
         else:
@@ -52,6 +52,7 @@ class PanoramaMultipleCamClient(Node):
             angle = goal_angles[-1] + angle_rot
             goal_angles.append(angle)
         goal_msg.goal_angles = goal_angles
+        goal_msg.actions_dict = possible_actions
 
         self.get_panorama.wait_for_server()
         self.panorama_status = GoalStatus.STATUS_EXECUTING

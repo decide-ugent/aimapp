@@ -3,7 +3,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
-from high_level_nav_actions.action import Panorama    
+from map_dm_nav_actions.action import Panorama    
 from action_msgs.msg import GoalStatus
 import argparse
 

@@ -5,7 +5,7 @@ from geometry_msgs.msg import Twist, Point
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 import threading
-from high_level_nav_actions.action import MoveStraight
+from map_dm_nav_actions.action import MoveStraight
 import numpy as np
 import time
 

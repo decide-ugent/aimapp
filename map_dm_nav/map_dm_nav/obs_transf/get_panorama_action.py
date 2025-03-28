@@ -8,7 +8,7 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 import threading
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
-from high_level_nav_actions.action import Panorama   
+from map_dm_nav_actions.action import Panorama   
 
 
 class GeneratePanorama(Node):

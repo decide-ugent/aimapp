@@ -4,7 +4,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Point
 from rclpy.action import ActionClient
-from high_level_nav_actions.action import Panorama    
+from map_dm_nav_actions.action import Panorama    
 from action_msgs.msg import GoalStatus
 
 class PanoramaClient(Node):

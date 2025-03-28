@@ -25,7 +25,7 @@ find_package(rclcpp REQUIRED)
 find_package(ament_cmake_python REQUIRED)
 find_package(rclpy REQUIRED)
 
-find_package(high_level_nav_actions REQUIRED)
+find_package(map_dm_nav_actions REQUIRED)
 
 
 # Install Python modules

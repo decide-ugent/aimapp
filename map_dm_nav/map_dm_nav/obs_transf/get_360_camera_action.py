@@ -8,7 +8,7 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 import threading
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
-from high_level_nav_actions.action import Panorama   
+from map_dm_nav_actions.action import Panorama   
 from map_dm_nav.obs_transf.theta_record import kill_gphoto2_processes, \
       capture_image, get_latest_image_file, read_image
 
