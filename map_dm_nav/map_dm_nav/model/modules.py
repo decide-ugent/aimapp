@@ -535,7 +535,8 @@ def update_posterior_policies(
     pB=None,
     E = None,
     gamma=16.0,
-    diff_policy_len = False
+    diff_policy_len = False,
+    logs= None
 ):
     """
     Update posterior beliefs about policies by computing expected free energy of each policy and integrating that
@@ -891,8 +892,9 @@ def create_policies(lookahead:int, actions:dict, current_pose:list=(0,0), lookah
         #Is used for a 360degree squared exploration area range
         policies_lists = generate_paths_quadrating_area(lookahead,actions)
 
-    if 'STAY' in actions:
-        policies_lists.append(np.array([[actions['STAY']]]*lookahead))
+    if 'STAY' in actions.values():
+        stay_action = [key for key, value in actions.items() if value == 'STAY'][0]
+        policies_lists.append(np.array([[stay_action]]*lookahead))
 
     policies_lists = remove_repetitions(policies_lists)
     return policies_lists
@@ -929,6 +931,7 @@ def define_policies_to_goal_v2(start_pose:list, end_pose:list, actions:dict, loo
     '''
     
     paths, moves = get_possible_poses_paths(start_pose, end_pose, actions)
+
     action_seq_options = []
     #Transform this path of poses into actions
     for path in paths:
@@ -971,20 +974,18 @@ def get_possible_poses_paths(start_pose:list,end_pose:list,  actions:dict)-> lis
     moves = {}
     #Get the angular direction the motion can have
     quadrant_range = get_quadrant_range(dx,dy)
-    for angle in actions.keys():
-        try:
-            angle_deg = float(angle) % 360
-        except ValueError as e: 
-            if angle == 'STAY':
-                continue
-            else:
-                raise e
+    for angle_range in actions.values():
+        if isinstance(angle_range, str):
+            continue
+        average_angle = np.mean(angle_range)
+        angle_deg = float(average_angle) % 360
+        
         #print('angle', angle_deg, angle_deg >= quadrant_range[0], angle_deg <= quadrant_range[1] )
         if (angle_deg >= quadrant_range[0] and angle_deg <= quadrant_range[1] ) \
             or angle_deg+360 == quadrant_range[1] :  #this is for 0==360
             motion = from_degree_to_point(angle_deg)
             # print(angle, motion)
-            moves[motion] = angle
+            moves[motion] = average_angle
     
     #If we want to explore, we want a grid path coverage (squared)
     paths = BFS_path_gen(dx, dy, list(moves.keys()))

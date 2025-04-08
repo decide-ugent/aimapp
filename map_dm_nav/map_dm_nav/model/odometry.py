@@ -96,8 +96,6 @@ class PoseMemory(object):
             p_idx = self.poses.index(pose)
         
         return p_idx
-    
-    
         
 class PoseOdometry(PoseMemory):
     ''' Use pose for Odometry '''
@@ -166,6 +164,9 @@ class PoseOdometry(PoseMemory):
         return [next]
     
     def pose_in_action_range(self, action:int, pose:list, odom:list=None, influence_radius:float=None)->bool:
+        if pose is None:
+            return False
+        
         if odom is None:
             odom = self.odometry.copy()
         if self.possible_actions[action] == 'STAY':

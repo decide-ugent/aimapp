@@ -1,6 +1,8 @@
 from map_dm_nav.model.pymdp.agent import Agent
 from map_dm_nav.model.odometry import PoseOdometry
 from map_dm_nav.model.pymdp import utils
+from map_dm_nav.model.pymdp.control import get_expected_obs, get_expected_states, calc_states_info_gain, calc_expected_utility
+from map_dm_nav.model.pymdp.maths import softmax, spm_log_single
 from map_dm_nav.model.modules import *
 from map_dm_nav.model.pymdp.learning import update_obs_likelihood_dirichlet
 from .pymdp.maths import spm_dot
@@ -19,7 +21,6 @@ class Ours_V5_RW(Agent):
         self.PoseMemory = PoseOdometry(self.possible_actions, influence_radius, robot_dim)
 
         self.preferred_ob = [-1,-1]
-        self.lookahead_distance = False #lookahead in number of consecutive angle_increments
         self.simple_paths = True # less computationally expensive path than full coverage paths 
                                  #(consider only a few direction and never go back on path)
         self.lookahead_node_creation = lookahead_node_creation
@@ -105,8 +106,8 @@ class Ours_V5_RW(Agent):
         self.infer_states(observation = observations, partial_ob=None)
         return 
     
-    def init_policies(self, E=None):
-        policies = create_policies(self.policy_len, self.possible_actions, lookahead_distance=self.lookahead_distance,simple_paths= self.simple_paths)
+    def init_policies(self):
+        policies = create_policies(self.policy_len, self.possible_actions,simple_paths= self.simple_paths)
         self.policies = policies
         assert all([len(self.num_controls) == policy.shape[1] for policy in self.policies]), "Number of control states is not consistent with policy dimensionalities"
         
@@ -114,15 +115,7 @@ class Ours_V5_RW(Agent):
 
         assert all([n_c >= max_action for (n_c, max_action) in zip(self.num_controls, list(np.max(all_policies, axis =0)+1))]), "Maximum number of actions is not consistent with `num_controls`"
         # Construct prior over policies (uniform if not specified) 
-        if E is not None:
-            if not isinstance(E, np.ndarray):
-                raise TypeError(
-                    'E vector must be a numpy array'
-                )
-            self.E = E
-            assert len(self.E) == len(self.policies), f"Check E vector: length of E must be equal to number of policies: {len(self.policies)}"
-        else:
-            self.E = self._construct_E_prior()
+        self.E = self._construct_E_prior()
 
     def reset(self, init_qs:np.ndarray=None, start_pose:tuple=None):
         """
@@ -332,6 +325,24 @@ class Ours_V5_RW(Agent):
     
         return outlier_indices
     
+    def get_state_observations(self, qs=np.ndarray)-> np.ndarray:
+        """ get observation belief for state qs"""
+        qo_pi = get_expected_obs(qs, self.A)
+        return qo_pi
+
+    def get_next_state_given_action(self, qs= np.array, action=int)->np.ndarray:
+        ''' expect only 1 qs, return only 1 qs with the same shape (1,) == np.ndarray([np.ndarray([])])'''
+        qs_pi = get_expected_states(qs, self.B, np.array([[action]]))
+        return qs_pi[0]
+    
+    def get_utility_term(self, qo_pi:np.ndarray)->float:
+        """ given the observation belief of a state, what is the utility term"""
+        return calc_expected_utility(qo_pi, self.C)
+    
+    def get_info_gain_term(self, qs_pi:np.ndarray)->float:
+        """ given the belief of a state, what is the info gain term (Note the method expects several qs, thus qs must be in 3 layers of np.ndarray)"""
+        return calc_states_info_gain(self.A, qs_pi)
+    
     #==== INFERENCE ====#
 
     def infer_states(self, observation:list, action:np.ndarray= None ,save_hist:bool=True, partial_ob:int=None, qs:list=None):
@@ -482,7 +493,7 @@ class Ours_V5_RW(Agent):
         if logs is not None:
             logs.info('catching up here')
         poses_efe = None
-        action = self.sample_action(next_possible_actions)
+        action = self.sample_action(q_pi, next_possible_actions)
 
         if logs is not None:
             logs.info('no problem here')
@@ -492,6 +503,9 @@ class Ours_V5_RW(Agent):
         #What we would expect given prev prior and B transition 
         # prior = spm_dot(self.B[0][:, :, int(action)], prior)
         
+        self.q_pi = q_pi
+        self.G = efe
+
         data = { "qs": posterior[0],
             "qpi": q_pi,
             "efe": efe,
@@ -547,7 +561,7 @@ class Ours_V5_RW(Agent):
             self.pB,
             E = self.E,
             gamma = self.gamma,
-            diff_policy_len = self.lookahead_distance,
+            diff_policy_len = False, #TODO: erase in a refactoring
             logs= logs
         )
         logs.info('hasattr(self, "q_pi_hist")'+ str(hasattr(self, "q_pi_hist")))
@@ -556,11 +570,9 @@ class Ours_V5_RW(Agent):
             if len(self.q_pi_hist) > self.inference_horizon:
                 self.q_pi_hist = self.q_pi_hist[-(self.inference_horizon-1):]
             
-        self.q_pi = q_pi
-        self.G = G
         return q_pi, G, info_gain, utility
     
-    def sample_action(self, possible_first_actions:list=None):
+    def sample_action(self, q_pi:np.ndarray, possible_first_actions:list=None)->int:
         """
         Sample or select a discrete action from the posterior over control states.
         This function both sets or cachés the action as an internal variable with the agent and returns it.
@@ -574,11 +586,10 @@ class Ours_V5_RW(Agent):
         """
         if possible_first_actions != None:
             #Removing all policies leading us to uninteresting or forbiden action. //speed computation//
-            policies, q_pi = zip(*[(policy, self.q_pi[p_id]) for p_id, policy \
+            policies, q_pi = zip(*[(policy, q_pi[p_id]) for p_id, policy \
                                    in enumerate(self.policies) if policy[0] in possible_first_actions])
         else:
             policies =  self.policies
-            q_pi = self.q_pi
 
         if self.sampling_mode == "marginal":
             action = control.sample_action(
@@ -607,6 +618,17 @@ class Ours_V5_RW(Agent):
         elif p_idx < -1:
             self.current_pose = None
         return p_idx
+    
+    def infer_best_action_given_actions(self, G:list, actions:list):
+        if isinstance(actions[0], (int, np.int64)):
+            actions = np.array([[[a]] for a in actions])
+        G = np.array(G)
+        lnE = spm_log_single(np.ones(G.shape) / len(G))
+
+        q_pi = softmax(G * self.gamma + lnE) 
+
+        best_action = control.sample_action(q_pi, policies = actions, num_controls = self.num_controls, action_selection = self.action_selection, alpha= self.alpha)
+        return q_pi, int(best_action[0])
     
     #==== OTHER METHODS ====#
 
