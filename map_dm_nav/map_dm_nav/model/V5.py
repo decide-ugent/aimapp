@@ -258,6 +258,7 @@ class Ours_V5_RW(Agent):
             np.ndarray: The extracted belief distribution over states.
         """
         return self.qs
+    
     def get_current_timestep(self):
         return self.curr_timestep
     def get_possible_actions(self):
@@ -275,13 +276,14 @@ class Ours_V5_RW(Agent):
     
     def get_A(self):
         return self.A
-    def get_current_most_likely_pose(self, z_score:float, min_z_score:float=2, observations:list=[])->int:
+    def get_current_most_likely_pose(self, z_score:float, min_z_score:float=2, qs=None,  observations:list=[])->int:
         """
         Given a z_scores (usually around 2), is the agent certain about the state. If it is, to which pose does it correspond?
         Return pose -1 if < threhsold, else return pose id.
         If no state stands out at all, we don't know where we are and return -2
         """
-        qs = self.get_belief_over_states()[0]
+        if qs is None:
+            qs = self.get_belief_over_states()[0]
         p_idx = -1
         mean = np.mean(qs)
         std_dev = np.std(qs)
@@ -325,23 +327,36 @@ class Ours_V5_RW(Agent):
     
         return outlier_indices
     
-    def get_state_observations(self, qs=np.ndarray)-> np.ndarray:
+    def get_expected_observation(self, qs=np.ndarray, A:np.ndarray=None)-> np.ndarray:
         """ get observation belief for state qs"""
-        qo_pi = get_expected_obs(qs, self.A)
+        if A is None:
+            A = self.A
+        qo_pi = get_expected_obs(qs, A)
         return qo_pi
 
-    def get_next_state_given_action(self, qs= np.array, action=int)->np.ndarray:
+    def get_next_state_given_action(self, qs= np.array, action=int, B=None)->np.ndarray:
         ''' expect only 1 qs, return only 1 qs with the same shape (1,) == np.ndarray([np.ndarray([])])'''
-        qs_pi = get_expected_states(qs, self.B, np.array([[action]]))
-        return qs_pi[0]
+        if B is None:
+            B = self.B
+
+        # print('B check', B[0][:,np.argmax(qs), action])
+        if isinstance(action, (int,np.int64)):
+            action = np.array([[action]])
+            
+        qs_pi = get_expected_states(qs, B, action)
+        return qs_pi
     
-    def get_utility_term(self, qo_pi:np.ndarray)->float:
+    def get_utility_term(self, qo_pi:np.ndarray, C=None)->float:
         """ given the observation belief of a state, what is the utility term"""
-        return calc_expected_utility(qo_pi, self.C)
+        if C is None:
+            C = self.C
+        return calc_expected_utility(qo_pi, C)
     
-    def get_info_gain_term(self, qs_pi:np.ndarray)->float:
+    def get_info_gain_term(self, qs_pi:np.ndarray, A=None)->float:
         """ given the belief of a state, what is the info gain term (Note the method expects several qs, thus qs must be in 3 layers of np.ndarray)"""
-        return calc_states_info_gain(self.A, qs_pi)
+        if A is None:
+            A = self.A
+        return calc_states_info_gain(A, qs_pi)
     
     #==== INFERENCE ====#
 
@@ -547,7 +562,6 @@ class Ours_V5_RW(Agent):
         else:
             A = self.A
 
-        logs.info('update_posterior_policies?')
         q_pi, G, info_gain, utility = update_posterior_policies(
             qs,
             A,
@@ -564,7 +578,6 @@ class Ours_V5_RW(Agent):
             diff_policy_len = False, #TODO: erase in a refactoring
             logs= logs
         )
-        logs.info('hasattr(self, "q_pi_hist")'+ str(hasattr(self, "q_pi_hist")))
         if hasattr(self, "q_pi_hist"):
             self.q_pi_hist.append(q_pi)
             if len(self.q_pi_hist) > self.inference_horizon:
@@ -619,15 +632,20 @@ class Ours_V5_RW(Agent):
             self.current_pose = None
         return p_idx
     
-    def infer_best_action_given_actions(self, G:list, actions:list):
+    def infer_best_action_given_actions(self, G:list, actions:list, action_selection:str=None, alpha:float=None):
         if isinstance(actions[0], (int, np.int64)):
             actions = np.array([[[a]] for a in actions])
+
+        if action_selection is None:
+            action_selection = self.action_selection
+        if alpha is None:
+            alpha = self.alpha
         G = np.array(G)
         lnE = spm_log_single(np.ones(G.shape) / len(G))
 
         q_pi = softmax(G * self.gamma + lnE) 
 
-        best_action = control.sample_action(q_pi, policies = actions, num_controls = self.num_controls, action_selection = self.action_selection, alpha= self.alpha)
+        best_action = control.sample_action(q_pi, policies = actions, num_controls = self.num_controls, action_selection = action_selection, alpha= alpha)
         return q_pi, int(best_action[0])
     
     #==== OTHER METHODS ====#

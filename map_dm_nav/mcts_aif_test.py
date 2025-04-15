@@ -14,7 +14,7 @@ import networkx as nx
 # THIS FILE PROVIDES SKELETON CODE FOR PLANNING USING MCTS - 
 # A mix between https://github.com/erwinwalraven/active_inference based on 'Information Gathering in POMDPs using Active Inference'
 # and https://github.com/ciamic/MCTS based on https://medium.com/@_michelangelo_/monte-carlo-tree-search-mcts-algorithm-for-dummies-74b2bae53bfa
-        
+
 def plot_mcts_tree(root_node):
     """Visualises the Monte Carlo Tree Search (MCTS) tree."""
     G = nx.DiGraph()  # Directed Graph
@@ -48,34 +48,9 @@ def plot_mcts_tree(root_node):
     edge_labels = nx.get_edge_attributes(G, 'action')
     nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=9, label_pos=0.3)
 
-    # 1. Use `nx.kamada_kawai_layout` for better spacing
-    # pos =  nx.spring_layout(G, k=2.0, seed=42) #nx.kamada_kawai_layout(G, dist)  # Alternative:
-
-    # # 2. Adjust `node_size` and `edge_label_pos`
-    # rewards = [G.nodes[n]['reward'] for n in G.nodes]  
-    # nx.draw(G, pos, with_labels=True, labels=nx.get_node_attributes(G, 'label'), 
-    #         node_color=rewards, cmap=plt.cm.cool, node_size=1300, font_size=8, edgecolors="black")
-
-    # # 3. Draw edges with action labels
-    # edge_labels = nx.get_edge_attributes(G, 'action')
-    # nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8, label_pos=0.7)
-
-
-    # # Layout for the tree
-    # pos = nx.spring_layout(G, seed=42)  # Adjust layout (tree-like)
-    
-    # # Draw nodes
-    # rewards = [G.nodes[n]['reward'] for n in G.nodes]  # Node color based on reward
-    # nx.draw(G, pos, with_labels=True, labels=nx.get_node_attributes(G, 'label'), 
-    #         node_color=rewards, cmap=plt.cm.cool, node_size=1100, font_size=8, edgecolors="black")
-
-    # # Draw edges with action labels
-    # edge_labels = nx.get_edge_attributes(G, 'action')
-    # nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8, label_pos=0.7)
 
     plt.title("Monte Carlo Tree Search (MCTS) Visualization")
     plt.show()
-
 
 
 def get_best_action_final(node):
@@ -101,14 +76,14 @@ def simulate(model, node, depth, max_depth):
 
     current = node
     while current.has_children_nodes():
-        print('here current', current.id)
+        # print('here current', current.id)
         childs = current.childs
-        print(current.id,'child score', [('id',c.id, 'N',round(c.N,2), 'T',round(c.T,2)) for a,c in childs.items()] )
         #we get all actions leading to max U score and pick one at random as next child
         all_averaged_efe = [c.get_averaged_efe_score() for c in childs.values()]
+        print(current.id,'child score', [('id',c.id, 'N',round(c.N,2), 'T',round(c.T,2)) for a,c in childs.items()] )
         print('child efe_av', [('id',c.id,'a',a,'efe_av', round(c.get_averaged_efe_score(),2)) for a,c in childs.items()] )
         q_pi, action = model.infer_best_action_given_actions(all_averaged_efe, list(childs.keys()))
-        print('q_pi', q_pi.round(2), 'selected next action', action)
+        # print('q_pi', q_pi.round(2), 'selected next action', action)
         current = childs[action]
         print(current.id)
   
@@ -130,39 +105,6 @@ def simulate(model, node, depth, max_depth):
         parent = parent.parent
         parent.N += 1
         parent.T = parent.T + current.T
-
-    ####original####
-    '''
-    get the belief b that corresponds to this node
-    b = node.belief
-    
-    # select action and corresponding child
-    a = get_best_action(node, C)
-    
-    # sample b' and o
-    b_next, o = node.pomdp.execute_weighted_particle_filter_transition(b, a, n)
-    observation_hash = o.get_observation_hash()
-    
-    # ensure that child exists for this observation
-    best_action_child = node.childs[a]
-    assert isinstance(best_action_child, TreeNodeObservationSplit)
-    best_action_child.ensure_child_exists(observation_hash, b_next)
-
-    # get child that corresponds to the belief that we encountered
-    belief_child = best_action_child.childs[observation_hash]
-    
-    # determine return value
-    ret_value = reward_temperature * node.get_reward(n) + simulate(belief_child, depth+1, max_depth, C, reward_temperature, n)
-    
-    # sanity check
-    if ret_value < -500.0:
-        print('very low value encountered in simulate at depth {}: {}'.format(depth, ret_value))
-    
-    # update values and visit counts
-    node.N += 1
-    best_action_child.N += 1
-    best_action_child.V += ((ret_value - best_action_child.V) / best_action_child.N)
-    '''
     return 1.0
 
 
@@ -182,7 +124,7 @@ if __name__ == "__main__":
     import datetime
     
     # config parameters
-    num_simulations = 12       # this is the number of simulations for planning
+    num_simulations = 20       # this is the number of simulations for planning
     num_steps = 1
         
     # initialise your Model object here
@@ -198,7 +140,7 @@ if __name__ == "__main__":
     # define true state here
     #state, parent, observation, action_index, next_possible_actions, reward=None
     state_qs = ours.get_belief_over_states()
-    actual_state = Node(state_qs = state_qs, pose_id=0, parent=0, observation=ours.get_state_observations(state_qs), action_index=0, next_possible_actions=None)
+    actual_state = Node(state_qs = state_qs, pose_id=0, parent=0, observation=ours.get_expected_observation(state_qs), action_index=0, next_possible_actions=None)
     
     print()
     print('Actual state', actual_state.id)
@@ -221,7 +163,7 @@ if __name__ == "__main__":
         
         # execute the action in actual_state
         next_state = actual_state.childs[execute_a]
-        plot_mcts_tree(actual_state)
+        # plot_mcts_tree(actual_state)
         next_state.detach_parent()
         
         print()
@@ -229,10 +171,11 @@ if __name__ == "__main__":
         print('Next state', next_state.id)
         print()
         print('Visual Observation:', next_state.observation[0][0].round(2), '\nPose Observation', next_state.observation[0][1].round(2))
-
-        
         
         # prepare for next iteration
         actual_state = next_state
+
+
+    print('execution time', datetime.datetime.now() - start_time)
 
         

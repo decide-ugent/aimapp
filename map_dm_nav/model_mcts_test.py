@@ -2,6 +2,7 @@
 import random
 import numpy as np
 
+
 class MCTS_Model:
     def __init__(self, model, n=1000):
         self.model = model
@@ -14,8 +15,7 @@ class MCTS_Model:
         self.expected_observations_cache = {}
         self.feasible_action_cache = {}
         self.map_observations = {}  # key: observation hash, value: observation object
-        
-        
+                
 
     def create_node_children(self, node):
     # def create_childs(self):
@@ -40,13 +40,13 @@ class MCTS_Model:
                 node.next_possible_actions.append(action)
             
             #=== action leading to a node, saving believed qs and qo ===#
-            next_state_qs = self.model.get_next_state_given_action(qs=node.state_qs, action=action)
-            qo_pi = self.model.get_state_observations(next_state_qs)
+            next_state_qs = self.model.get_next_state_given_action(qs=node.state_qs, action=action)[0]
+            qo_pi = self.model.get_expected_observation(next_state_qs)
             #python should erase unreferenced classes. But let's systematise it
             if action in node.childs:
                 del node.childs[action]
             node.childs[action] = Node(state_qs = next_state_qs, pose_id=next_pose_id, parent=node, observation=qo_pi, action_index=action, next_possible_actions=None)   
-            print('from', node.id, 'creating node', node.childs[action].id, 'with action' , action )                     
+            #print('from', node.id, 'creating node', node.childs[action].id, 'with action' , action )                     
             # if child[action].id == self.id:
             #     child[action].T = -50 #BAD
         return node
@@ -62,19 +62,18 @@ class MCTS_Model:
             return -1
         return next_pose_id
 
-    def define_child_transition_G(self,child):
+    def calculate_expected_free_energy(self,child):
         G = 0
         if self.model.use_utility:
             G += self.model.get_utility_term(child.observation)
         if self.model.use_states_info_gain:
             G+= self.model.get_info_gain_term([child.state_qs])
-
-        child.reward = G
-        return child
+        return G
     
     def define_children_rewards(self, node, depth):
         for child in node.childs.values():
-            child = self.define_child_transition_G(child)
+            G = self.calculate_expected_free_energy(child)
+            child.reward = G
             child.N += 1
             child.T = child.reward + self.rollout(child, depth)
             parent = child
@@ -96,17 +95,15 @@ class MCTS_Model:
             action = random.choice(current.next_possible_actions)
             child = current.childs[action]
             if child.reward == 0:
-                G = self.define_child_transition_G(child)
+                G = self.calculate_expected_free_energy(child)
                 current.childs[action].reward  = G
+            
             current = child
             cumulated_G +=G
             step+=1
         return cumulated_G
-import numpy as np
-from copy import deepcopy
-import random
 
-import matplotlib.pyplot as plt
+
 
 #NODE OF THE TREE
 class Node:
