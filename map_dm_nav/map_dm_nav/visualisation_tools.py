@@ -1,19 +1,20 @@
-from matplotlib import pyplot as plt
 import numpy as np
 import igraph
 import sys
 import seaborn as sns
-from pathlib import Path
-from matplotlib import colors
-import matplotlib.cm as cm
 import cv2
 import os
 import pickle
 import csv
+from matplotlib import pyplot as plt
+from pathlib import Path
+from matplotlib import colors
+import matplotlib.cm as cm
 from PIL import ImageGrab
-from map_dm_nav.model.modules import from_degree_to_point
 import pandas
+import networkx as nx
 
+from map_dm_nav.model.modules import from_degree_to_point
 
 def create_custom_cmap(custom_colors) -> colors.ListedColormap:
     return colors.ListedColormap(custom_colors[:]) #,  alpha=None)
@@ -403,7 +404,56 @@ def plot_state_in_map_model_transition(model1, model2, fig_ax=[None, None]) -> n
     plt.grid(False)
     return fig
 
+
+
 #===== IGRAPH PLOT ======#
+def plot_mcts_tree(root_node):
+    """Visualises the Monte Carlo Tree Search (MCTS) tree."""
+    G = nx.DiGraph()  # Directed Graph
+
+    # Recursively extract tree structure
+    def add_nodes_edges(node, parent=None, action=None):
+        node_label = f"ID: {node.id}\nR: {round(node.state_reward, 2)}"
+        G.add_node(node.id, label=node_label, reward=node.state_reward)
+
+        if parent is not None:
+            G.add_edge(parent.id, node.id, action=int(action))  # Add edge with action label
+            #G.add_edge(node.id, parent.id, action=rev_action(action))  
+        # print('node has children?', node.has_children_nodes())
+        if node.has_children_nodes():
+            for action, child_node in node.childs.items():
+                # print('child id', child_node.id)
+                add_nodes_edges(child_node, node, action)
+    add_nodes_edges(root_node)
+
+    pos = nx.kamada_kawai_layout(G)
+    # Scale positions to increase spacing
+    pos = {k: (x * 1.5, y * 1.5) for k, (x, y) in pos.items()}
+
+    # Node colors based on reward
+    rewards = [G.nodes[n]['reward'] for n in G.nodes]
+    min_reward = min(rewards) if rewards else 0
+    max_reward = max(rewards) if rewards else 1
+    node_colors = [(r - min_reward) / (max_reward - min_reward + 1e-6) for r in rewards] # Normalize 0-1
+
+    # Node sizes based on visit count (log scale might be better)
+    # sizes = [G.nodes[n]['N'] for n in G.nodes]
+    # #node_sizes = [200 + s * 10 for s in sizes] # Linear scaling
+    # node_sizes = [200 + 200 * math.log(s + 1) for s in sizes] # Log scaling
+
+    plt.figure(figsize=(12, 8))
+    nx.draw(G, pos, with_labels=True, labels=nx.get_node_attributes(G, 'label'),
+            node_color=node_colors, cmap=plt.cm.cool,node_size=1500,
+            font_size=8, font_weight='bold', edgecolors="black", alpha=0.9)
+
+    # Draw edge labels (actions)
+    edge_labels = nx.get_edge_attributes(G, 'action')
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=7, label_pos=0.7)
+
+    plt.title("Monte Carlo Tree Search (MCTS) Visualization")
+    plt.show()
+
+
 def plot_graph_as_cscg(A:np.ndarray, agent_state_mapping:dict, \
                        cmap:colors.ListedColormap,store_path:Path, edge_threshold:float= 1):
     """ plot states connections, 

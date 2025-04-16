@@ -1,7 +1,8 @@
+from map_dm_nav.model.MCTS import MCTS
 from map_dm_nav.model.pymdp.agent import Agent
 from map_dm_nav.model.odometry import PoseOdometry
 from map_dm_nav.model.pymdp import utils
-from map_dm_nav.model.pymdp.control import get_expected_obs, get_expected_states, calc_states_info_gain, calc_expected_utility
+from map_dm_nav.model.pymdp.control import get_expected_obs, get_expected_states, calc_states_info_gain, calc_expected_utility, calc_pA_info_gain, calc_pB_info_gain
 from map_dm_nav.model.pymdp.maths import softmax, spm_log_single
 from map_dm_nav.model.modules import *
 from map_dm_nav.model.pymdp.learning import update_obs_likelihood_dirichlet
@@ -212,7 +213,6 @@ class Ours_V5_RW(Agent):
 
         return possible_actions
 
-    
     #==== TEST&VISU PURPOSES ONLY ====#
     def update_agent_state_mapping(self, pose:tuple, ob:list, state_belief:list=None)-> dict:
         """ Dictionnary to keep track of believes and associated obs, usefull for testing purposes"""
@@ -250,6 +250,13 @@ class Ours_V5_RW(Agent):
         self.step_time()
     
     #==== GET METHODS
+    def get_current_pose_id(self):
+        if self.current_pose is None:
+            current_pose = self.PoseMemory.get_odom()[:2]
+        else:
+            current_pose = self.current_pose
+        return self.PoseMemory.pose_to_id(current_pose)
+    
     def get_belief_over_states(self):
         """
         get the belief distribution over states
@@ -346,18 +353,55 @@ class Ours_V5_RW(Agent):
         qs_pi = get_expected_states(qs, B, action)
         return qs_pi
     
-    def get_utility_term(self, qo_pi:np.ndarray, C=None)->float:
-        """ given the observation belief of a state, what is the utility term"""
-        if C is None:
-            C = self.C
-        return calc_expected_utility(qo_pi, C)
     
-    def get_info_gain_term(self, qs_pi:np.ndarray, A=None)->float:
-        """ given the belief of a state, what is the info gain term (Note the method expects several qs, thus qs must be in 3 layers of np.ndarray)"""
-        if A is None:
-            A = self.A
-        return calc_states_info_gain(A, qs_pi)
-    
+    #==== MCTS_CALL ====#
+    def define_actions_from_MCTS_run(self, logging=None, num_steps=1, **kwargs)->list: #,dict
+        """ 
+        MCTS RUN, UNDER TEST (SHOULD NOT BE RE-CREATED EACH RUN)
+        TODO: adapt for when we want a full policy
+
+        """
+        num_simulations = 25  # Number of MCTS simulations per planning step
+        max_rollout_depth = 10 # Maximum depth for the simulation (rollout) phase
+        c_param = 5
+        mcts = MCTS(self, c_param, num_simulations, max_rollout_depth)
+
+        observations = kwargs.get('observations', None)
+        next_possible_actions = kwargs.get('next_possible_actions', None)
+
+        #If we are not inferring state at each state during the model update, we do it here
+        if observations is not None and self.current_pose is None:
+        #If self.current_pose is not None then we have step_update that infer state
+            
+            #NB: Only give obs if state not been inferred before 
+            if len(observations) < len(self.A):
+                partial_ob = 0
+                            
+            elif len(observations) == len(self.A):
+                partial_ob = None
+                if self.current_pose == None:
+                    self.current_pose = observations[1]
+                observations[1] = self.PoseMemory.pose_to_id(observations[1])
+            
+            self.infer_states(observation = observations, partial_ob=partial_ob, save_hist=True)
+
+        initial_pose_id = self.get_current_pose_id()
+        initial_belief_qs = self.get_belief_over_states() # Get initial belief
+        initial_observation = self.get_expected_observation(initial_belief_qs)
+
+        best_actions, data = mcts.start_mcts(state_qs=initial_belief_qs,
+                     pose_id=initial_pose_id, observation=initial_observation, \
+                     next_possible_actions=next_possible_actions, num_steps=num_steps, logging=None)
+        
+        #NOTE: THIS CONSIDERONLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
+        self.q_pi = data['q_pi'][0]
+        self.G = data['efe'][0]
+
+        #NOTE: THIS CONSIDER THAT WE APPLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
+        self.action = best_actions[0]
+        self.step_time()
+        
+        return best_actions[:num_steps], data
     #==== INFERENCE ====#
 
     def infer_states(self, observation:list, action:np.ndarray= None ,save_hist:bool=True, partial_ob:int=None, qs:list=None):
@@ -465,7 +509,7 @@ class Ours_V5_RW(Agent):
         if self.current_pose !=None:
             self.current_pose = self.PoseMemory.get_odom(as_tuple=True)[:2]
         return self.current_pose
-    
+
     def infer_action(self, logs=None, **kwargs):
         """
         return the best action to take
@@ -644,9 +688,38 @@ class Ours_V5_RW(Agent):
         lnE = spm_log_single(np.ones(G.shape) / len(G))
 
         q_pi = softmax(G * self.gamma + lnE) 
-
-        best_action = control.sample_action(q_pi, policies = actions, num_controls = self.num_controls, action_selection = action_selection, alpha= alpha)
+        if self.sampling_mode == "marginal":
+            best_action = control.sample_action(q_pi, policies = actions, num_controls = self.num_controls, action_selection = action_selection, alpha= alpha)
+        elif self.sampling_mode == "full":
+            best_action = control.sample_policy(q_pi, actions, self.num_controls,
+                                           action_selection=action_selection, alpha=alpha)
         return q_pi, int(best_action[0])
+    
+    def infer_utility_term(self, qo_pi:np.ndarray, C=None)->float:
+        """ given the observation belief of a state, what is the utility term"""
+        if C is None:
+            C = self.C
+        return calc_expected_utility(qo_pi, C)
+    
+    def infer_info_gain_term(self, qs_pi:np.ndarray, A=None)->float:
+        """ given the belief of a state, what is the info gain term (Note the method expects several qs, thus qs must be in 3 layers of np.ndarray)"""
+        if A is None:
+            A = self.A
+        return calc_states_info_gain(A, qs_pi)
+    
+    def infer_param_info_gain(self, qs_pi:np.ndarray, qo_pi:np.ndarray, qs:np.ndarray, action:int):
+        """Infer param info gain for an action (but can also be a policy)"""
+        G = 0
+        if self.pA is not None:
+            param_info_gain = calc_pA_info_gain(self.pA, qo_pi, qs_pi)
+            G +=  param_info_gain
+        if self.pB is not None:
+            if isinstance(action, (int,np.int64)):
+                action = np.array([[action]])
+            param_info_gain = calc_pB_info_gain(self.pB, qs_pi, qs, action)
+            G +=  param_info_gain
+
+        return G
     
     #==== OTHER METHODS ====#
 
@@ -680,7 +753,6 @@ class Ours_V5_RW(Agent):
         #     if value[0] <= angle < value[1]:  # Check if angle falls within range
         #         return key
         # return None
-
 
     #==== Update A, B, C ====#
     def update_A_with_data(self,obs:list, state:int)->np.ndarray:
