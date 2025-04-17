@@ -93,7 +93,7 @@ class Ours_V5_RW(Agent):
             None
         """
       
-        self.init_policies()
+        # self.init_policies()
         self.reset(start_pose=self.PoseMemory.get_poses_from_memory()[0])
         if self.edge_handling_params["use_BMA"] and hasattr(self, "q_pi_hist"): #This is not compatible with our way of moving
             del self.q_pi_hist
@@ -105,6 +105,9 @@ class Ours_V5_RW(Agent):
         self.update_A_with_data(observations,0)
         self.update_agent_state_mapping(self.current_pose, observations, 0)
         self.infer_states(observation = observations, partial_ob=None)
+        if 'STAY' in self.possible_actions.values():
+            stay_action = [key for key, value in self.possible_actions.items() if value == 'STAY'][0]
+            self.B[0] = set_stationary(self.B[0], stay_action)
         return 
     
     def init_policies(self):
@@ -231,14 +234,14 @@ class Ours_V5_RW(Agent):
     
     #==== SET METHODS ====#
     def explo_oriented_navigation(self):
-        self.use_param_info_gain = False
-        self.use_states_info_gain = True #Should we
+        self.use_param_info_gain = False #if true, do not use with the other terms
+        self.use_states_info_gain = True 
         self.use_utility = False
 
     def goal_oriented_navigation(self, obs=None, **kwargs):
         pref_weight = kwargs.get('pref_weight', 1.0)
         self.update_preference(obs, pref_weight)
-        self.use_param_info_gain = False
+        self.use_param_info_gain = False #if true, do not use with the other terms
         self.use_states_info_gain = False #This make it FULLY Goal oriented
         #NOTE: if we want it to prefere this C but still explore a bit once certain about state 
         #(keep exploration/exploitation balanced) keep info gain
@@ -251,6 +254,7 @@ class Ours_V5_RW(Agent):
     
     #==== GET METHODS
     def get_current_pose_id(self):
+        ''' we do not want a negative pose od'''
         if self.current_pose is None:
             current_pose = self.PoseMemory.get_odom()[:2]
         else:
@@ -294,7 +298,7 @@ class Ours_V5_RW(Agent):
         p_idx = -1
         mean = np.mean(qs)
         std_dev = np.std(qs)
-        print('qs mean and std_dev', mean, std_dev)
+        #print('qs mean and std_dev', mean, std_dev)
         # Calculate Z-scores
         z_scores = (qs - mean) / std_dev
         # Get indices of values with Z-score above 2
@@ -302,7 +306,7 @@ class Ours_V5_RW(Agent):
         min_outlier_indices = np.where(np.abs(z_scores) > min_z_score)[0]
         
         
-        print("Indices of outliers (Z-score >",z_score,"):" , outlier_indices)
+        #print("Indices of outliers (Z-score >",z_score,"):" , outlier_indices)
         #If we are sure of a state (independent of number of states), we don't have pose as ob and A allows for pose
         if len(outlier_indices) >= 0 and len(observations) < 2 and len(self.A) > 1:
             #If 1 state stands out
@@ -394,11 +398,11 @@ class Ours_V5_RW(Agent):
                      next_possible_actions=next_possible_actions, num_steps=num_steps, logging=None)
         
         #NOTE: THIS CONSIDERONLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
-        self.q_pi = data['q_pi'][0]
+        self.q_pi = data['qpi'][0]
         self.G = data['efe'][0]
 
         #NOTE: THIS CONSIDER THAT WE APPLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
-        self.action = best_actions[0]
+        self.action = np.array([best_actions[0]])
         self.step_time()
         
         return best_actions[:num_steps], data
@@ -988,13 +992,13 @@ class Ours_V5_RW(Agent):
                 if self.C[m].shape[0] < num_obs[m]:
                     self.C[m] = np.append(self.C[m], [0]*(num_obs[m]- self.C[m].shape[0]))
     
-    def update_preference(self, obs:list, pref_weight:float=1.0):
-        """given a list of observations we fill C with thos as preference. 
+    def update_preference(self, obs:list=[-1,-1], pref_weight:float=1.0):
+        """given a list of observations (must fill all expected observation. If no preference enters -1) we fill C with thos as preference. 
         If we have a partial preference over several observations, 
         then the given observation should be an integer < 0, the preference will be a null array 
         """
         if isinstance(obs, list):
-            self.update_A_dim_given_obs_3(obs, null_proba=[False]*len(obs))
+            self.update_A_dim_given_obs(obs, null_proba=[False]*len(obs))
 
             C = self._construct_C_prior()
 
@@ -1013,10 +1017,10 @@ class Ours_V5_RW(Agent):
                 )
             self.C = utils.to_obj_array(C)
 
-            assert len(self.C) == self.num_modalities, f"Check C vector: number of sub-arrays must be equal to number of observation modalities: {agent.num_modalities}"
+            assert len(self.C) == self.num_modalities, f"Check C vector: number of sub-arrays must be equal to number of observation modalities: {self.num_modalities}"
 
             for modality, c_m in enumerate(self.C):
-                assert c_m.shape[0] == self.num_obs[modality], f"Check C vector: number of rows of C vector for modality {modality} should be equal to {agent.num_obs[modality]}"
+                assert c_m.shape[0] == self.num_obs[modality], f"Check C vector: number of rows of C vector for modality {modality} should be equal to {self.num_obs[modality]}"
         else:
             self.preferred_ob = [-1,-1]
             self.C = self._construct_C_prior()
@@ -1230,7 +1234,7 @@ class Ours_V5_RW(Agent):
             self.update_imagined_translation(qs[:], action_jump, n_actions, action_id, cur_pose, \
                                    min_dist_to_next_node, obstacle_dist_per_actions)
                
-    def agent_step_update(self, action_id:int, obs:list)->None:
+    def agent_step_update(self, action_id:int, obs:list, logs=None)->None:
         """
         Updates the agent's belief state, transition probabilities, and learned environment 
         model based on the given action and observations.
@@ -1269,27 +1273,30 @@ class Ours_V5_RW(Agent):
                 pose_id = self.PoseMemory.pose_to_id(self.current_pose)
 
             obstacles_dist_per_action_range = obs[-1]
-
-            #1. INFER NEW POSE
-            pose = self.PoseMemory.id_to_pose(pose_id)
-            self.current_pose = self.infer_pose(pose) #Not sure it shouold be here. in case i want to give whatever...
-
+            
+            #1. INFER NEW POSE (should be after motion and before update)
+            # pose = self.PoseMemory.id_to_pose(pose_id)
+            # self.current_pose = self.infer_pose(pose) #Not sure it shouold be here. in case i want to give whatever...
+            
+            observations = [primary_ob,pose_id]
+            if logs:
+                logs.info('observations pose %f, action %f, ob_id %f, obstacles %s' % (pose_id, action_id, primary_ob, str(obstacles_dist_per_action_range)))
             #2. UPDATE A C DIM IF NEW OB
-            self.update_A_dim_given_obs([primary_ob,pose_id], null_proba=[True,False])
+            self.update_A_dim_given_obs(observations, null_proba=[True,False])
             self.update_C_dim()
             #updating B in case pose_id new
             self.update_B_dim_given_A()
             #3. UPDATE BELIEVES GIVEN OBS
-            Qs = self.infer_states(obs, save_hist=False)
+            prior = self.infer_states(observations, save_hist=False)
 
             print('prior on believed state; action', self.action, action_id, \
-                'colour_ob:', primary_ob , 'inf pose:',self.current_pose,'prior belief:', Qs[0].round(3))
+                'colour_ob:', primary_ob , 'inf pose:',self.current_pose,'prior belief:', prior[0].round(3))
                 
-            self.update_believes_with_obs(Qs,action=action_id, obs=[primary_ob,pose_id])
+            self.update_believes_with_obs(prior,action=action_id, obs=observations)
 
-            qs = self.infer_states([primary_ob,pose_id], save_hist=False)
+            posterior = self.infer_states(observations, save_hist=True)
             ## agent_state_mapping for TEST PURPOSES and visualisation
-            self.update_agent_state_mapping(tuple(self.current_pose[:2]), [primary_ob,pose_id], qs[0])
+            self.update_agent_state_mapping(tuple(self.current_pose[:2]), observations, posterior[0])
             #4. update all nodes
             self.update_transition_nodes(obstacle_dist_per_actions=obstacles_dist_per_action_range)
             #This is not mandatory, just a gain of time

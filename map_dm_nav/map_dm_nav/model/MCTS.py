@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 import numpy as np
 import random
-import pickle
 import logging
-from map_dm_nav.model.V5 import Ours_V5_RW
 import math
-import datetime
-from pathlib import Path
-import matplotlib.pyplot as plt
-import networkx as nx
+
+#TEST IMPORTS
+# import datetime
+# from pathlib import Path
+# import pickle
+# import matplotlib.pyplot as plt
+# import networkx as nx
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+#logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Node Class ---
 class Node:
@@ -165,19 +166,26 @@ class MCTS_Model_Interface:
         G = Utility + Information Gain
         """
         G = 0.0
+        logging.debug(f"action:{action}, next_belief_qs: {str(next_belief_qs)}")
         if self.model.use_states_info_gain:
+            #the highest (>0), the more interesting
             info_gain = self.model.infer_info_gain_term([next_belief_qs]) # Assuming takes a list
             G += info_gain
-            # logging.debug(f"  Info Gain Term: {info_gain:.4f}")
-        if self.model.use_utility:
-            utility = self.model.infer_utility_term(expected_observation_qo_pi)
-            G += utility
-            # logging.debug(f"  Utility Term: {utility:.4f}")
-        if self.model.use_param_info_gain:
-            param_info_gain = self.model.infer_param_info_gain([next_belief_qs],expected_observation_qo_pi, current_qs, action)
-            G += param_info_gain
 
-        # logging.debug(f"  Calculated G: {G:.4f}")
+            logging.debug(f"  Info Gain Term: {info_gain:.4f}")
+        if self.model.use_utility:
+            #the lowest (<0), the more interesting
+            logging.debug(f"  Utility Term exp ob: {str(expected_observation_qo_pi)}")
+            utility = self.model.infer_utility_term(expected_observation_qo_pi)
+            G -= utility
+            logging.debug(f"  Utility Term: {utility:.4f}")
+        if self.model.use_param_info_gain: #not good in asociation with the other terms
+            #the highest (>0), the less interesting
+            param_info_gain = self.model.infer_param_info_gain([next_belief_qs],expected_observation_qo_pi, current_qs, action)[0]/100
+            G -= param_info_gain
+            logging.debug(f"  Param info gain Term: {param_info_gain:.4f}")
+
+        logging.debug(f"  Calculated G: {G:.4f}")
         return G
 
     def infer_policy_over_actions(self, action_values:list, available_actions:list, action_selection:str=None, alpha:float=None):
@@ -217,7 +225,7 @@ class MCTS:
             #"bayesian_surprise": utils.bayesian_surprise(posterior[0].copy(), prior),
             }
         for i in range(num_steps):
-            best_action, data = mcts.plan(current_node, self.num_simulation, self.max_rollout_depth, data)
+            best_action, data = self.plan(current_node, self.num_simulation, self.max_rollout_depth, data)
             best_actions.append(best_action)
             if num_steps>1 and best_action in current_node.childs:
                 next_node = current_node.childs[best_action]
@@ -230,7 +238,7 @@ class MCTS:
                 next_node.detach_parent()
                 current_node = next_node # Update the current state
 
-        return best_actions
+        return best_actions, data
 
     def _select_node(self, root_node:object)->object:
         """Phase 1: Selection - Traverse the tree using UCB1 until a leaf node is reached."""
@@ -256,6 +264,7 @@ class MCTS:
         node.childs = {}
             
         all_possible_actions = self.model_interface.get_possible_actions()
+
         #we save as the current node child each new node created taking an action from current pose 
         for action in all_possible_actions:
             #=== check if new  ===#
@@ -273,7 +282,6 @@ class MCTS:
             #python should erase unreferenced classes. But let's systematise it
             if action in node.childs:
                 del node.childs[action]
-
             # Calculate the immediate reward (Expected Free Energy) for this transition
             # Note: This G is associated with *reaching* the new state.
             child_reward_G = self.model_interface.calculate_expected_free_energy(next_state_qs, qo_pi, node.state_qs, action)
@@ -455,7 +463,7 @@ class MCTS:
 
         # After simulations, determine the best action from the root
         best_action, q_pi_actions_values = self.get_best_action(root_node)
-        data['q_pi'].append(q_pi_actions_values[0])
+        data['qpi'].append(q_pi_actions_values[0])
         data['efe'].append(q_pi_actions_values[1])
         logging.info(f"MCTS planning finished. Best action: {best_action}")
         return best_action, data
@@ -504,8 +512,7 @@ class MCTS:
         full_action_values = [action_values[available_actions.index(a)] if a in available_actions else 0 for a in self.model_interface.get_possible_actions()]
         full_q_pi = [q_pi[available_actions.index(a)] if a in available_actions else 0 for a in self.model_interface.get_possible_actions()]
         return best_action_id, (full_q_pi, full_action_values)
-
-
+    
 # --- Utility Functions ---
 def plot_mcts_tree(root_node):
     """Visualises the Monte Carlo Tree Search (MCTS) tree."""

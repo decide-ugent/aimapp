@@ -232,7 +232,7 @@ def point_in_triangle_with_arc(pt:list, polygon:list)-> bool:
     #  and in the circular region, then it's in the zone
     if is_within_radius_range(pt, arc_center, arc_radius) and \
         pt_between_vectors(pt, arc_center, p1,p2):
-       print(pt,'point_in_triangle_with_arc: In arc')
+       #print(pt,'point_in_triangle_with_arc: In arc')
        return True
 
     return False 
