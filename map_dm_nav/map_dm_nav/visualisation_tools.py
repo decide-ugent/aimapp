@@ -2,7 +2,6 @@ import numpy as np
 import igraph
 import sys
 import seaborn as sns
-import cv2
 import os
 import pickle
 import csv
@@ -10,12 +9,16 @@ from matplotlib import pyplot as plt
 from pathlib import Path
 from matplotlib import colors
 import matplotlib.cm as cm
+
 from PIL import ImageGrab
 import pandas
 import networkx as nx
 
 from map_dm_nav.model.modules import from_degree_to_point
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend, works headless
 
+import cv2 #cv2 called before matplotlib can results in errors
 def create_custom_cmap(custom_colors) -> colors.ListedColormap:
     return colors.ListedColormap(custom_colors[:]) #,  alpha=None)
 
@@ -158,47 +161,57 @@ def plot_likelihood(A:np.ndarray, state_mapping=None, tittle_add:str='')-> np.nd
     plt.title(tittle_add + " likelihood distribution (A)")
     return fig
     
-def plot_transitions(B:np.ndarray,state_map:dict, actions:dict) -> np.ndarray:
-    """ Plot Transitions matrix showing the probability of a transition between two states given a certain action """
-    # pose = next(key for key, value in state_map.items() if value['state'] == i)
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+
+def plot_transitions(B: np.ndarray, state_map: dict, actions: dict) -> np.ndarray:
+    """Plot Transitions matrix showing the probability of a transition between two states given a certain action."""
+    
     sorted_state_map = dict(sorted(state_map.items(), key=lambda item: item[1]['state']))
-    labels = [(key, value['state']) for key, value in sorted_state_map.items() ]
-    #labels = [next((key, value['state']) for key, value in state_map.items() if value['state'] == i) for i in range(B.shape[1])]
-    # labels = sorted(labels, key=lambda x: (x[0][0], x[0][1]))
-      
+    labels = [f"{key} ({value['state']})" for key, value in sorted_state_map.items()]
+
     n_actions = len(actions)
     l = int(np.ceil(np.sqrt(n_actions)))
     L = int(np.ceil(n_actions / l))
-    fig, axes = plt.subplots(L, l ,\
-                             figsize = (L*3 + max(10,2.5*len(state_map)), \
-                                        l*2 + max(10,1.5*len(state_map))))
-    count = 0
     
+    fig, axes = plt.subplots(L, l, figsize=(L*3 + max(10, 2.5*len(state_map)), 
+                                             l*2 + max(10, 1.5*len(state_map))))
+    
+    axes = np.atleast_2d(axes)  # Ensure axes is always a 2D array
+    count = 0
+
     for i in range(L):
         for j in range(l):
             if count >= n_actions:
                 fig.delaxes(axes[i][j])
                 continue
-            #     break 
-            elif count not in list(actions.values()):
+            
+            if count not in actions:
                 continue
-       
-            action_str = next(key for key, value in actions.items() if value == count)
-            # temp_b = T_B_to_ideal_T_B(B, count, state_map)
 
-            # Plotting the heatmap
-            g = sns.heatmap(B[:,:,count], cmap = "OrRd", linewidth = 2.5, cbar = False, ax = axes[i,j], xticklabels=labels, yticklabels=labels)
+            action_str = str(actions[count])  # Convert action name to string
 
+            # Plot the heatmap
+            g = sns.heatmap(B[:len(labels), :len(labels), count], cmap="OrRd", linewidth=3, 
+                            cbar=False, ax=axes[i, j], xticklabels=labels, yticklabels=labels)
 
-            g.tick_params(axis='both', which='major', labelsize=20)  
-            g.set_title(action_str, fontsize=35)
-            g.set_xlabel('prev state', fontsize=25)
-            g.set_ylabel('next state', fontsize=25)
-            count +=1 
-    # fig.delaxes(axes.flatten()[2+int(len(a)/2)])
+            g.tick_params(axis='both', which='major', labelsize=14)  # Adjust label font size
+            g.set_title(action_str, fontsize=20)
+            g.set_xlabel('Prev State', fontsize=16)
+            g.set_ylabel('Next State', fontsize=16)
+
+            # Rotate labels for better visibility
+            g.set_xticklabels(labels, rotation=45, ha="right", fontsize=12)
+            g.set_yticklabels(labels, rotation=0, fontsize=12)
+            
+            count += 1
+
+    plt.subplots_adjust(left=0.2, bottom=0.2)  # Add margin space
     plt.tight_layout()
 
     return fig
+
 
 def plot_state_in_map_wt_gt(model:object, gt_odom:list, odom:list=None) -> np.ndarray: 
     dim = max(25, int(model.get_n_states()/2))
@@ -209,80 +222,68 @@ def plot_state_in_map_wt_gt(model:object, gt_odom:list, odom:list=None) -> np.nd
         circle2=plt.Circle((odom[1], odom[0]),radius=0.15,fill=True, color='0.2') #linestyle='dotted'
         plt.gca().add_patch(circle2)
     plt.plot()
-    fig = plot_state_in_map(model.get_B(),model.get_agent_state_mapping(), model.possible_directions, model.get_pose_dist(), fig_ax=[fig,ax])
+    fig = plot_state_in_map(model.get_B(),model.get_agent_state_mapping(), fig_ax=[fig,ax])
     return fig
 
-def plot_state_in_map(B: np.ndarray, state_mapping: dict, possible_actions: dict, pose_dist: float, fig_ax=[None, None]) -> np.ndarray:
+def plot_state_in_map(B: np.ndarray, state_mapping: dict,fig_ax=[None, None]) -> np.ndarray:
     """
-    B: transition matrix
-    state_mapping: pose:{state, ob}
-    possibles actions
+    Plot states as dots positioned based on `state_mapping` keys.
+    Draw transitions between states based on transition probabilities in `B`.
 
-    Plot the states at the pose coordinates with dot of colours depending on observation id.
-    Blank: no observation
-    Adjacent states with an existing transition have a line connecting them (width considering B weight). 
+    Parameters:
+    - B (np.ndarray): Transition matrix of shape (num_states, num_states, num_actions).
+    - state_mapping (dict): Mapping of (x, y) positions to state properties.
+    - possible_actions (dict): Dictionary of action indices to angle ranges.
+    - pose_dist (float): Distance associated with each move action.
 
-    Return plot
+    Returns:
+    - fig (matplotlib Figure): The generated figure.
     """
-    direction_mapping = {}
     if fig_ax[0] is None:
         fig, ax = plt.subplots(figsize=(25, 25))
     else:
         fig = fig_ax[0]
         ax = fig_ax[1]
-        
-    for angle in possible_actions.keys():
-        if angle == 'STAY':
-            direction_mapping[angle] = (0, 0)
-            continue
-        motion = from_degree_to_point(float(angle), pose_dist=pose_dist)
-        direction_mapping[angle] = motion
 
-    actions = {}
-    # Transform the directions into a motion mapping for the plot
-    for k, v in possible_actions.items():
-        if k in direction_mapping:
-            actions[v] = direction_mapping[k]
 
-    # Draw transitions between adjacent states
-    for action, (dx, dy) in actions.items():
-        for (x, y), data in state_mapping.items():
-            state = data['state']
-            next_x, next_y = x + dx, y + dy
-            if (next_x, next_y) in state_mapping:
-                next_state = state_mapping[(next_x, next_y)]['state']
-                Trans = B[next_state, state, action]
-                # Print worthwhile transitions with line width considering B weight
-                if Trans > 0.005: 
-                    ax.plot([y, next_y], [x, next_x], 'k-', linewidth=Trans * 10)  # Swapping x and y
-
-    # Get unique ob values and assign colors
+    # Get unique observation values for color mapping
     unique_obs = np.sort(list({v['ob'] for v in state_mapping.values()}))
-    color_map = get_cmap()
-    ob_to_color = {ob: color_map(i) for i, ob in enumerate(unique_obs)}
+    color_map = get_cmap() #get_cmap('viridis', len(unique_obs))
+    ob_to_color = {ob: color_map.colors[i] for i, ob in enumerate(unique_obs)}
 
+    # Draw transitions between states
+    num_states, _, num_actions = B.shape
+    for prev_state in range(num_states):
+        for next_state in range(num_states):
+            for action in range(num_actions):
+                prob = B[next_state, prev_state, action]
+                if prob > 0.1:  # Only plot meaningful transitions
+                    # Find corresponding positions in `state_mapping`
+                    prev_pos = next((pos for pos, data in state_mapping.items() if data['state'] == prev_state), None)
+                    next_pos = next((pos for pos, data in state_mapping.items() if data['state'] == next_state), None)
+                    
+                    if prev_pos and next_pos:
+                        ax.plot([prev_pos[1], next_pos[1]], [prev_pos[0], next_pos[0]], 
+                                'k-', linewidth=prob * 10)  # Scale linewidth with probability
 
-    ax.invert_yaxis()
-
-    # Plot the states as dots with colors different for each RGB ob
+    # Plot states as dots
     for (x, y), data in state_mapping.items():
         state = data['state']
-        ob = data.get('ob', 0)  # Default to 0 if 'ob' is not present
+        ob = data.get('ob', 0)
         color = ob_to_color[ob]
-        ax.plot(y, x, 'o', color=color, markersize=20)  # Swapping x and y for the plot
-        ax.text(y - 0.1, x + 0.1, str(state), fontsize=25, ha='right', c='r')  # Annotate state number
 
-    # Only show integer values
-    ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
-    ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
+        ax.plot(y, x, 'o', color=color, markersize=20)  # Position state as (y, x)
+        ax.text(y - 0.05, x + 0.05, str(state), fontsize=25, ha='right', c='r')  # Label state number
 
+    # Formatting
+    # ax.invert_yaxis()
+    ax.invert_xaxis()
     ax.set_aspect('equal')
     ax.tick_params(axis='both', which='major', labelsize=26)
-    plt.ylabel('X', fontsize=30)  # X-axis is now vertical, so it's the ylabel
-    plt.xlabel('Y', fontsize=30)  # Y-axis is now horizontal, so it's the xlabel
+    plt.ylabel('X', fontsize=30)
+    plt.xlabel('Y', fontsize=30)
     plt.title('State Transitions', fontsize=35)
     plt.grid(False)
-    return fig
 
 def plot_state_in_map_wt_gt_model_transition(model1:object, model2:object, gt_odom:list) -> np.ndarray: 
     """ 
@@ -403,8 +404,6 @@ def plot_state_in_map_model_transition(model1, model2, fig_ax=[None, None]) -> n
     plt.title('State Transitions', fontsize=35)
     plt.grid(False)
     return fig
-
-
 
 #===== IGRAPH PLOT ======#
 def plot_mcts_tree(root_node):
@@ -568,7 +567,36 @@ def save_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:list, p
                         'observations', store_path)
     save_plot_likelihood(A[1], model.get_agent_state_mapping(), \
                         'poses', store_path)
-    
+
+
+def save_pose_data(model, ob, ob_id, obstacle_dist_per_actions, gt_odom=None, store_path=None, logs=None):
+    '''tempo just to get data to run without env'''
+    pose_id = model.current_pose
+    visit= 1
+    if store_path is None:
+        store_path = Path.cwd() / 'tests' / 'poses' 
+
+    pose_visit = str(pose_id) + '_' + str(visit)
+    store_path = store_path / pose_visit
+    store_path = str(store_path)
+    while os.path.exists(store_path):
+        visit+=1
+        store_path = store_path.replace('_'+str(visit-1), '_'+str(visit))
+    store_path = Path(store_path)
+    store_path.mkdir(exist_ok=True, parents=True)
+
+    pickle_dump_model(model, store_path)
+    save_panorama(ob, ob_id, store_path)
+    save_plot_state_in_map(model, model.current_pose, store_path)
+    save_plot_beliefs(model.get_belief_over_states()[0], store_path)
+    A = model.get_A()
+    save_plot_likelihood(A[0], model.get_agent_state_mapping(), \
+                        'observations', store_path)
+    save_plot_likelihood(A[1], model.get_agent_state_mapping(), \
+                        'poses', store_path)
+    with open("obstacle_dist_per_actions.txt", "w") as file:
+        file.write(str(obstacle_dist_per_actions))
+
 def save_failed_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:list, poss_next_a:list, \
                  scan_orientation:list, scan_dist:list, gt_odom:list, action_success:bool,elapsed_time:int,
                  store_path:Path=None, action_select_data:dict=None):

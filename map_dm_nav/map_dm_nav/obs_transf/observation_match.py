@@ -23,11 +23,11 @@ class ViewMemory():
     Stitch consecutive images into a single viewPoint and 
     return the matching score of given images to memorised images
     """
-    def __init__(self) -> None:
+    def __init__(self, matching_threshold:float=0.65) -> None:
         self.views = []
         self.best_confidence_th = 0.9
         self.reset_stitcher()
-        self.matching_threshold = 0.65
+        self.matching_threshold = matching_threshold
     
     def set_memory_views(self, views):
         self.views = views
@@ -110,6 +110,6 @@ class ViewMemory():
             if curr_ob.shape[1] > self.views[closest_view_id].full_ob.shape[1]:
                 self.update_viewpoint_observation(closest_view_id, curr_ob)
         
-        print('ViewMemory:match_scores current images to memorised views', match_scores)
+        #print('ViewMemory:match_scores current images to memorised views', match_scores)
         return int(np.argmax(match_scores)), match_scores
     

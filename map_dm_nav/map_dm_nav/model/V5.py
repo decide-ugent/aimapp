@@ -279,6 +279,9 @@ class Ours_V5_RW(Agent):
     def get_memory_views(self):
         return self.ViewMemory
     
+    def get_n_states(self):
+        return len(self.agent_state_mapping)
+    
     def get_agent_state_mapping(self)->dict:
         return self.agent_state_mapping
     
@@ -327,13 +330,13 @@ class Ours_V5_RW(Agent):
         p_idx = -1
         mean = np.mean(likelihood)
         std_dev = np.std(likelihood)
-        print('likelihood mean and std_dev', mean, std_dev)
+        # print('likelihood mean and std_dev', mean, std_dev)
         # Calculate Z-scores
         z_scores = (likelihood - mean) / std_dev
         # Get indices of values with Z-score above 2
         outlier_indices = np.where(np.abs(z_scores) > z_score)[0]       
         
-        print("likelihood Indices of outliers (Z-score >",z_score,"):" , outlier_indices)
+        #print("likelihood Indices of outliers (Z-score >",z_score,"):" , outlier_indices)
         #If we are sure of a state (independent of number of states), we don't have pose as ob and A allows for pose
     
         return outlier_indices
@@ -551,7 +554,7 @@ class Ours_V5_RW(Agent):
             logs.info('still there')
         #In case we don't have observations.
         posterior = self.get_belief_over_states()
-        print('infer action: inferred prior state', posterior[0].round(3))
+        #print('infer action: inferred prior state', posterior[0].round(3))
         q_pi, efe, info_gain, utility = self.infer_policies(posterior, logs=logs)
         if logs is not None:
             logs.info('catching up here')
@@ -675,7 +678,7 @@ class Ours_V5_RW(Agent):
         if p_idx >= 0:
             self.current_pose = self.PoseMemory.id_to_pose(p_idx)
             self.PoseMemory.reset_odom(self.current_pose)
-            print('updating believed pose given certitude on state:', self.current_pose)
+            #print('updating believed pose given certitude on state:', self.current_pose)
         elif p_idx < -1:
             self.current_pose = None
         return p_idx
@@ -731,7 +734,7 @@ class Ours_V5_RW(Agent):
         next_pose = self.PoseMemory.pose_transition_from_action(action =action_id, odom= pose, ideal_dist=min_dist_to_next_node)
         next_pose = [round(elem, 2) for elem in next_pose]
         next_pose_id = self.PoseMemory.pose_to_id(next_pose, save_in_memory=False)
-        print('action, next pose and id', action_id, next_pose, next_pose_id)
+        #print('action, next pose and id', action_id, next_pose, next_pose_id)
         return next_pose, next_pose_id
 
     def determine_action_given_angle_deg(self, angle):
@@ -971,6 +974,19 @@ class Ours_V5_RW(Agent):
         Qs = self.infer_states(obs) 
         self.update_A(obs, Qs)
 
+    def update_B_given_unreachable_pose(self,next_pose:list, action:int)-> None:
+        """ We reduce transition probability between those 2 states that do not connect"""
+        if self.current_pose is not None and next_pose in self.PoseMemory.get_poses_from_memory() :
+            n_pose_id = self.PoseMemory.pose_to_id(next_pose)
+            qs = self.get_belief_over_states()
+            hypo_qs = self.infer_states([n_pose_id], np.array([action]), partial_ob=1, save_hist=False)
+
+            # print(self.B[0][np.argmax(hypo_qs[0])][np.argmax(qs[0])][action], self.B[0][np.argmax(qs[0])][np.argmax(hypo_qs[0])][action])
+            # print(self.B[0][np.argmax(qs[0])][np.argmax(hypo_qs[0])][action], self.B[0][np.argmax(hypo_qs[0])][np.argmax(qs[0])][action])
+            self.update_B(hypo_qs, qs,action,lr_pB=-10)
+            a_inv = reverse_action(self.possible_actions, action)
+            self.update_B(qs,hypo_qs,a_inv,lr_pB=-7)
+
     def update_qs_dim(self, qs:np.array=None, update_qs_memory:bool=True)->np.ndarray:
         if qs is None:
             qs = self.qs[:]
@@ -1082,10 +1098,10 @@ class Ours_V5_RW(Agent):
         next_state_ob_dist = obstacle_dist_per_actions[action_id] #to check if ob between physical pose to next imagined pose
         
         prev_action = -1
-        print('__')
+        #print('__')
         for offset in range(action_jump, -action_jump - 1, -1):
             action_adjacent = action_id + offset
-            print('action_adjacent, offset', action_adjacent, offset)
+            #print('action_adjacent, offset', action_adjacent, offset)
             #restraingning action between possible actions numbers
             if action_adjacent < 0 :
                 action_adjacent = n_actions +action_adjacent
@@ -1094,13 +1110,13 @@ class Ours_V5_RW(Agent):
             #from physical pose, get next adjacent pose given offset action 
             next_adjacent_pose, next_adjacent_pose_id = self.determine_next_pose(action_adjacent, cur_pose, min_dist_to_next_node)
             #if no adjacent pose, nothing to do
-            print('next_adjacent_pose_id', next_adjacent_pose_id,'next_pose_id', next_pose_id, 'cur_pose_id',cur_pose_id)
+            #print('next_adjacent_pose_id', next_adjacent_pose_id,'next_pose_id', next_pose_id, 'cur_pose_id',cur_pose_id)
             if next_adjacent_pose_id < 0 or next_adjacent_pose_id==cur_pose_id:
                 continue
             #if adjacent pose exists, then we get it's state (obtained from Transitioning from physical state to this adjacent state)
             adjacent_qs = self.infer_states([next_adjacent_pose_id], np.array([action_adjacent]), save_hist=False, partial_ob=1, qs=qs)
             adjacent_state_dist_to_ob = obstacle_dist_per_actions[action_adjacent] #get if ob at this adjacent pose
-            print('offset', offset, 'action_adjacent', action_adjacent, 'adjacent_state_dist_to_ob', round(adjacent_state_dist_to_ob,2))
+            #print('offset', offset, 'action_adjacent', action_adjacent, 'adjacent_state_dist_to_ob', round(adjacent_state_dist_to_ob,2))
             #We correct to pose ID pose, to be sure it matches
             next_adjacent_pose = self.PoseMemory.id_to_pose(next_adjacent_pose_id) #get memorised pose (not the approximated one)
             
@@ -1111,7 +1127,7 @@ class Ours_V5_RW(Agent):
                 direct_lr_pB = 5
                 reverse_lr_pB = 3
                 pose_in_action_range = self.PoseMemory.pose_in_action_range(action, next_pose, odom= cur_pose)
-                print('direct transition from new current odom', cur_pose_id, 'to', next_pose_id)
+                #print('direct transition from new current odom', cur_pose_id, 'to', next_pose_id)
                 
             #If this transition is a lateral transition 
             elif offset != 0 and next_adjacent_pose_id != next_pose_id: #if indirect motion, we don't want to reinforce 'stay' motion with wrong action
@@ -1123,19 +1139,19 @@ class Ours_V5_RW(Agent):
                 pose_in_action_range = self.PoseMemory.pose_in_action_range(action, next_adjacent_pose, odom= next_pose)
                 #Just to avoid reinforcing same link several times (can happens if we check pose to id only considering distance)
                 if prev_action == action:
-                    print('already updated that transition')
+                    #print('already updated that transition')
                     continue
                 prev_action = action
-                print('lateral transition from imagined pose',next_pose_id, 'to', next_adjacent_pose_id)
+                #print('lateral transition from imagined pose',next_pose_id, 'to', next_adjacent_pose_id)
             else:
                 continue
-            print('pose_in_action_range', pose_in_action_range, 'action', action,'next_pose', next_adjacent_pose, 'odom', next_pose)
+            #print('pose_in_action_range', pose_in_action_range, 'action', action,'next_pose', next_adjacent_pose, 'odom', next_pose)
             #If the pose is not in this action range, we don't enforce it + we can't have the poses being unreachable.
             if pose_in_action_range and adjacent_state_dist_to_ob > min_dist_to_next_node and next_state_ob_dist > min_dist_to_next_node :
                 # Positive LR
                 self.update_transitions_both_ways(reference_qs, adjacent_qs, action, direct_lr_pB=direct_lr_pB, reverse_lr_pB=reverse_lr_pB)
             elif pose_in_action_range:
-                print('negative reinforcement')
+                #print('negative reinforcement')
                 # Negative LR
                 self.update_transitions_both_ways(reference_qs, adjacent_qs, action, direct_lr_pB=-direct_lr_pB, reverse_lr_pB=-reverse_lr_pB)
 
@@ -1143,7 +1159,7 @@ class Ours_V5_RW(Agent):
         ''' 
         For each new pose observation, add a ghost state and update the estimated transition and observation for that ghost state.
         '''
-        print('Ghost nodes process:')
+        #print('Ghost nodes process:')
         action_jump = int((len(self.possible_actions)-1) / 6)
         sure_about_data_until_this_state = 1
         ''' 
@@ -1173,7 +1189,7 @@ class Ours_V5_RW(Agent):
         min_dist_to_next_node = self.influence_radius + self.robot_dim/2#/3 to consider -a little- robot_dim when adding nodes.as_integer_ratio
         
         for action_id in range(n_actions):
-            print('______________________________')
+            #print('______________________________')
             hypo_qs = None
             state_step = 1
             prev_step_qs = qs[:]
@@ -1188,22 +1204,22 @@ class Ours_V5_RW(Agent):
                 next_state_min_dist_to_next_node = self.influence_radius *state_step + self.robot_dim/2
                 #1)
                 #Is obstacle too close?
-                print('for action', action_id, 'obstacle', obstacle_dist_per_actions[action_id], 'min_dist for new state', next_state_min_dist_to_next_node)
+                #print('for action', action_id, 'obstacle', obstacle_dist_per_actions[action_id], 'min_dist for new state', next_state_min_dist_to_next_node)
                 if obstacle_dist_per_actions[action_id] <=  next_state_min_dist_to_next_node :
                     no_obstacle = False 
                     #Only enforce the loop back to current pose if it's a direct motion
                     if state_step <= sure_about_data_until_this_state:
                         #2)
-                        print('enforcing motion:',action_id,' leads to current state')
+                        #print('enforcing motion:',action_id,' leads to current state')
                         self.update_B(qs, qs, action_id, lr_pB = 10)   
                 else:
                     #4)
                     next_pose, next_pose_id = self.determine_next_pose(action_id, cur_ref_pose, min_dist_to_next_node)
-                    print('next_pose', next_pose, self.PoseMemory.get_poses_from_memory().copy())
+                    #print('next_pose', next_pose, self.PoseMemory.get_poses_from_memory().copy())
                     #5) ->7)  
                     if next_pose_id < 0 and pose_in_action_range:
                         next_pose_id = self.PoseMemory.pose_to_id(next_pose) 
-                        print('creating new node in position', next_pose_id)
+                        #print('creating new node in position', next_pose_id)
                         #7')
                         self.update_A_dim_given_pose(next_pose_id,null_proba=True)
                         self.update_B_dim_given_A()
@@ -1216,17 +1232,17 @@ class Ours_V5_RW(Agent):
                         #plus we only want the action continuing in a straight line from physical current pose. 
                         #becquse the beam rqnge grows bigger as the vectors are longer.                            
                     else:
-                        print('pose existing nearby as', next_pose_id,'not creating new node')
+                        #print('pose existing nearby as', next_pose_id,'not creating new node')
                         hypo_qs = self.infer_states([next_pose_id], np.array([action_id]), partial_ob=1, save_hist=False, qs=prev_step_qs)
 
                     if state_step > sure_about_data_until_this_state and pose_in_action_range:
-                            print('DIRECT MOTION AT STATE STEP',state_step)
+                            #print('DIRECT MOTION AT STATE STEP',state_step)
                             self.update_imagined_translation(prev_step_qs[:], 0, n_actions, action_id, cur_ref_pose, \
                                         min_dist_to_next_node, obstacle_dist_per_actions)
                     prev_step_qs = hypo_qs[:]
                     cur_ref_pose = self.PoseMemory.id_to_pose(next_pose_id)
                     pose_in_action_range = self.PoseMemory.pose_in_action_range(action_id, cur_ref_pose, odom= cur_pose, influence_radius=next_state_min_dist_to_next_node)#doesn't work
-                    print('cur_ref_pose', cur_ref_pose, 'can be reached from ', cur_pose, 'with action', action_id,'?:', pose_in_action_range)
+                    #print('cur_ref_pose', cur_ref_pose, 'can be reached from ', cur_pose, 'with action', action_id,'?:', pose_in_action_range)
                     
                 state_step +=1
             #3), 5)->6)with offset 0 and 8)
@@ -1289,8 +1305,8 @@ class Ours_V5_RW(Agent):
             #3. UPDATE BELIEVES GIVEN OBS
             prior = self.infer_states(observations, save_hist=False)
 
-            print('prior on believed state; action', self.action, action_id, \
-                'colour_ob:', primary_ob , 'inf pose:',self.current_pose,'prior belief:', prior[0].round(3))
+            #print('prior on believed state; action', self.action, action_id, \
+            #    'colour_ob:', primary_ob , 'inf pose:',self.current_pose,'prior belief:', prior[0].round(3))
                 
             self.update_believes_with_obs(prior,action=action_id, obs=observations)
 

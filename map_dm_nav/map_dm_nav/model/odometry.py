@@ -132,8 +132,8 @@ class PoseOdometry(PoseMemory):
             self.odometry[2] = vrot #we will keep this angular direction at pose
             self.odometry[0] = float(p[0])
             self.odometry[1] = float(p[1])
-            print('in pose odom, vtrans:',vtrans,' vrot:', vrot,' odom:', self.odometry)
-        
+            # print('in pose odom, vtrans:',vtrans,' vrot:', vrot,' odom:', self.odometry)
+            return 
         print('ERROR in PoseOdometry', pose)
 
     def update_odom_given_action(self, action:int, ideal_motion_dist:float)->None:

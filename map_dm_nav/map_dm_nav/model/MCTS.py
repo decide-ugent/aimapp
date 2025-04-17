@@ -457,7 +457,7 @@ class MCTS:
         """Runs the MCTS planning process for a given number of simulations."""
         logging.info(f"Starting MCTS planning from root node {root_node.id} for {num_simulations} simulations.")
         for i in range(num_simulations):
-            print()
+            # print()
             logging.info(f"--- Simulation {i+1}/{num_simulations} ---")
             self.run_simulation(root_node, max_rollout_depth)
 
