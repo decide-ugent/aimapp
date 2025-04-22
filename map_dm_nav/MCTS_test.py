@@ -9,9 +9,13 @@ import datetime
 from pathlib import Path
 import matplotlib.pyplot as plt
 import networkx as nx
+import os
+
+
+os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Node Class ---
 class Node:
@@ -19,7 +23,7 @@ class Node:
     Represents a node in the MCTS tree.
     Stores state information, MCTS statistics, and tree structure links.
     """
-    def __init__(self, state_qs, pose_id, parent, action_index, observation=None, initial_reward=0.0):
+    def __init__(self, state_qs:np.ndarray, pose_id:int, parent:object=None, action_index:int=0, observation:np.ndarray=None, initial_reward:float=0.0, possible_actions=None):
         self.pose_id = pose_id
         self.id = pose_id  # Using pose_id as a unique identifier for the node
 
@@ -37,19 +41,19 @@ class Node:
         self.action_index = action_index # Action taken by the parent to reach this node
 
         # Action Space
-        self.possible_actions = None # List of possible actions from this node's state (computed during expansion)
+        self.possible_actions = possible_actions # List of possible actions from this node's state (computed during expansion)
         self.untried_actions = None # Actions not yet explored from this node
 
         # Intrinsic Reward (EFE components calculated when node is evaluated)
         self.state_reward = initial_reward # The immediate EFE/G calculated for reaching this state
 
-    def get_averaged_reward(self):
+    def get_averaged_reward(self)->float:
         """Calculates the average reward accumulated through this node."""
         if self.N == 0:
             return 0.0 # Avoid division by zero for unvisited nodes
         return self.total_reward / self.N
 
-    def get_ucb1_score(self, c_param=1.41):
+    def get_ucb1_score(self, c_param:float=1.41)->float:
         """
         Calculates the UCB1 score for this node.
         Balances exploitation (average reward) and exploration (visit count).
@@ -77,10 +81,14 @@ class Node:
         # Note: Depending on the scale of state_reward vs rollout_reward, this might need tuning.
         return exploitation_term + exploration_term #+ self.state_reward
 
-    def is_fully_expanded(self):
-        """Checks if we verified possible actions from this node leading to a child node."""
-        return self.possible_actions is not None
+    def is_fully_expanded(self)->bool:
+        """Checks if we verified possible actions from this node leading to a child node. This suppose we have No isolated node"""
+        return self.possible_actions is not None and len(self.childs) > 0
 
+    def has_children_nodes(self)->bool:
+        """Checks if the node has any child nodes."""
+        return len(self.childs) > 0
+    
     def select_best_child_UCB(self, c_param:float=1.41)->object:
         """Selects the child with the highest UCB1 score."""
         best_score = -float('inf')
@@ -99,21 +107,15 @@ class Node:
         """Selects the child with AIF."""
         all_averaged_efe = [c.get_averaged_reward() for c in self.childs.values()]
         # q_pi, best_action_id = self.infer_policy_over_actions(all_averaged_efe, self.possible_actions)
-        # logging.debug(f"  Child {child.id} (Action {action}) average_EFE: {score:.2f}")
-            
-    
+        # logging.debug(f"  Child {child.id} (Action {action}) average_EFE: {score:.2f}")    
         #logging.debug(f"Node {self.id}: Selected child {best_child.id if best_child else 'None'} with score {best_score:.2f}")
         return all_averaged_efe
 
-    def detach_parent(self):
+    def detach_parent(self)-> None:
         """Removes the reference to the parent node to allow garbage collection."""
         logging.debug(f"Detaching parent from node {self.id}")
         del self.parent
         self.parent = None
-
-    def has_children_nodes(self):
-        """Checks if the node has any child nodes."""
-        return len(self.childs) > 0
 
 # --- Model Interface Class ---
 class MCTS_Model_Interface:
@@ -121,7 +123,7 @@ class MCTS_Model_Interface:
     Acts as a wrapper or interface to the underlying Active Inference model.
     Provides methods to query the model for transitions, observations, rewards, etc.
     """
-    def __init__(self, underlying_model):
+    def __init__(self, underlying_model:object):
         self.model = underlying_model # The actual model object (e.g., Ours_V5_RW instance)
         # Caches can be added here if needed for expensive model calls
         # self.transition_cache = {}
@@ -129,9 +131,9 @@ class MCTS_Model_Interface:
         # self.reward_cache = {}
         logging.info(f"MCTS_Model_Interface initialized with model type: {type(underlying_model)}")
 
-    def get_possible_actions(self)->dict:
-        """Returns a dictionary of possible actions {action_id: action_range} from the current pose."""
-        return self.model.get_possible_actions() 
+    def get_possible_actions(self)->list:
+        """Returns a list of all possible actions [action_id]"""
+        return list(self.model.get_possible_actions().keys())
 
     def id_to_pose(self, pose_id:int)->list:
         return self.model.PoseMemory.id_to_pose(pose_id)
@@ -160,21 +162,32 @@ class MCTS_Model_Interface:
         # This corresponds to p(o|qs')
         return self.model.get_expected_observation(next_belief_qs)
 
-    def calculate_expected_free_energy(self, next_belief_qs:np.ndarray, expected_observation_qo_pi:np.ndarray)->float:
+    def calculate_expected_free_energy(self, next_belief_qs:np.ndarray, expected_observation_qo_pi:np.ndarray, current_qs:np.ndarray, action:int)->float:
         """
         Calculates the Expected Free Energy (G) for a potential next state.
         G = Utility + Information Gain
         """
         G = 0.0
+        logging.debug(f"action:{action}, next_belief_qs: {str(next_belief_qs)}")
         if self.model.use_states_info_gain:
-            info_gain = self.model.get_info_gain_term([next_belief_qs]) # Assuming takes a list
+            #the highest (>0), the more interesting
+            info_gain = self.model.infer_info_gain_term([next_belief_qs]) # Assuming takes a list
             G += info_gain
-            # logging.debug(f"  Info Gain Term: {info_gain:.4f}")
+
+            logging.debug(f"  Info Gain Term: {info_gain:.4f}")
         if self.model.use_utility:
-            utility = self.model.get_utility_term(expected_observation_qo_pi)
-            G += utility
-            # logging.debug(f"  Utility Term: {utility:.4f}")
-        # logging.debug(f"  Calculated G: {G:.4f}")
+            #the lowest (<0), the more interesting
+            logging.debug(f"  Utility Term exp ob: {str(expected_observation_qo_pi)}")
+            utility = self.model.infer_utility_term(expected_observation_qo_pi)
+            G -= utility
+            logging.debug(f"  Utility Term: {utility:.4f}")
+        if self.model.use_param_info_gain: #not good in asociation with the other terms
+            #the highest (>0), the less interesting
+            param_info_gain = self.model.infer_param_info_gain([next_belief_qs],expected_observation_qo_pi, current_qs, action)[0]/100
+            G -= param_info_gain
+            logging.debug(f"  Param info gain Term: {param_info_gain:.4f}")
+
+        logging.debug(f"  Calculated G: {G:.4f}")
         return G
 
     def infer_policy_over_actions(self, action_values:list, available_actions:list, action_selection:str=None, alpha:float=None):
@@ -188,17 +201,52 @@ class MCTS:
     """
     Implements the Monte Carlo Tree Search algorithm using an Active Inference model.
     """
-    def __init__(self, model_interface:object, c_param:float=1.41):
-        self.model_interface = model_interface
+
+    def __init__(self, AIF_model:object, c_param:float=1.41, num_simulation:int=25, max_rollout_depth:int=10):
+        self.model_interface = MCTS_Model_Interface(AIF_model)
         self.c_param = c_param # Exploration parameter for UCB1
-        logging.info(f"MCTS initialized with exploration parameter c={c_param}")
+        self.num_simulation  = num_simulation # Number of MCTS simulations per planning step
+        self.max_rollout_depth = max_rollout_depth # Maximum depth for the simulation (rollout) phase
+        logging.info(f"MCTS initialized with exploration parameter c={c_param}, num_simus={num_simulation}, max_depth={max_rollout_depth}, policy_alpha={AIF_model.alpha},  action_selection={AIF_model.action_selection}")
+
+    def start_mcts(self,state_qs:np.ndarray, pose_id:int, observation:np.ndarray, next_possible_actions:list= None, num_steps:int=1, logging=None)-> list:
+        current_node = Node(state_qs=state_qs,
+                pose_id=pose_id,
+                parent=None,
+                action_index=None,
+                observation=observation, 
+                possible_actions=next_possible_actions)
+        
+        best_actions = []
+        data = {"qs": state_qs[0],
+            "qpi": [],
+            "efe": [],
+            "info_gain": [],
+            "utility": [],
+            #"bayesian_surprise": utils.bayesian_surprise(posterior[0].copy(), prior),
+            }
+        for i in range(num_steps):
+            best_action, data = self.plan(current_node, self.num_simulation, self.max_rollout_depth, data)
+            best_actions.append(best_action)
+            if num_steps>1 and best_action in current_node.childs:
+                next_node = current_node.childs[best_action]
+                if logging:
+                    logging.info(f"Executing action {best_action} -> Transitioning to Node {next_node.id}")
+
+                # IMPORTANT: Detach the chosen next state from its parent (the previous state).
+                # This makes the chosen next state the new root for the *next* planning step
+                # and allows the old parts of the tree to be garbage collected.
+                next_node.detach_parent()
+                current_node = next_node # Update the current state
+
+        return best_actions, data
 
     def _select_node(self, root_node:object)->object:
         """Phase 1: Selection - Traverse the tree using UCB1 until a leaf node is reached."""
         current = root_node
         # logging.debug(f"--- Selection Phase Start (Root: {root_node.id}) ---")
-        while current.is_fully_expanded() and current.has_children_nodes():
-            logging.info(f"  Selected Node {current.id}")
+        while current.is_fully_expanded():
+            logging.debug(f"  Selected Node {current.id}")
             # logging.debug(f"Selecting from Node {current.id} (N={current.N}, TR={current.total_reward:.3f})")
             #USING UCB
             current = current.select_best_child_UCB(self.c_param)
@@ -213,15 +261,19 @@ class MCTS:
     def _expand_node_in_all_possible_direction(self, node:object)->object:
         """Phase 2: Expansion - Add a new child node for an untried action."""
         
-        node.possible_actions =[]
+        if node.possible_actions is None :
+            node.possible_actions =[]
+            all_possible_actions = self.model_interface.get_possible_actions()
+        else:
+            all_possible_actions = node.possible_actions
         node.childs = {}
             
-        all_possible_actions = list(self.model_interface.get_possible_actions().keys())
+
         #we save as the current node child each new node created taking an action from current pose 
         for action in all_possible_actions:
-            #=== check if new  ===#
+            next_pose_id = self.model_interface.get_next_node_pose_id(node.pose_id, action)
+            #=== check if new  (redundant)===#
             if action not in node.possible_actions:
-                next_pose_id = self.model_interface.get_next_node_pose_id(node.pose_id, action)
                 if next_pose_id < 0: #no known or valid next node
                     continue
                 node.possible_actions.append(action)
@@ -234,10 +286,9 @@ class MCTS:
             #python should erase unreferenced classes. But let's systematise it
             if action in node.childs:
                 del node.childs[action]
-
             # Calculate the immediate reward (Expected Free Energy) for this transition
             # Note: This G is associated with *reaching* the new state.
-            child_reward_G = self.model_interface.calculate_expected_free_energy(next_state_qs, qo_pi)
+            child_reward_G = self.model_interface.calculate_expected_free_energy(next_state_qs, qo_pi, node.state_qs, action)
 
             # Create the new child node
             child_node = Node(
@@ -261,7 +312,7 @@ class MCTS:
             #     parent.total_reward = parent.total_reward + child_reward_G
 
             node.childs[action] = child_node
-            logging.info(f"from node {node.id} -> Child Node {child_node.id}, expanding with action {action}(Initial G={child_reward_G:.3f})")
+            logging.debug(f"from node {node.id} -> Child Node {child_node.id}, expanding with action {action}(Initial G={child_reward_G:.3f})")
             # logging.debug(f"--- Expansion Phase End (Expanded Node: {child_node.id}) ---")
         return node # Return the newly expanded node
 
@@ -305,7 +356,7 @@ class MCTS:
         # logging.debug(f"--- Rollout Phase End (Node: {start_node.id}, Total Rollout G: {cumulative_G:.3f}) ---")
         return cumulative_G
 
-    def _rollout(self, start_node, max_depth):
+    def _rollout(self, start_node:object, max_depth:int)->float:
         """
         Phase 3: Simulation (Rollout) - Simulate a trajectory from the start_node
         using a default policy (e.g., random actions) and return the cumulative reward (G).
@@ -323,7 +374,7 @@ class MCTS:
             if current_node and current_node.is_fully_expanded():
                 all_possible_actions = current_node.possible_actions
             else:
-                all_possible_actions = list(self.model_interface.get_possible_actions().keys())
+                all_possible_actions = self.model_interface.get_possible_actions()
             
             if len(all_possible_actions)==0:
                 # logging.debug(f"  Rollout Depth {depth}: No actions possible from pose {current_sim_pose_id}. Stopping.")
@@ -342,9 +393,9 @@ class MCTS:
             sim_qo_pi = self.model_interface.get_expected_observation(next_sim_qs)
 
             # 4. Calculate reward (G) for this simulated step
-            step_G = self.model_interface.calculate_expected_free_energy(next_sim_qs, sim_qo_pi)
+            step_G = self.model_interface.calculate_expected_free_energy(next_sim_qs, sim_qo_pi, current_sim_qs, action)
             cumulative_G += step_G
-            logging.info(f"  Rollout Depth {depth}: Action {action}, NextPose {next_sim_pose_id}, StepG={step_G:.3f}, CumulG={cumulative_G:.3f}")
+            logging.debug(f"  Rollout Depth {depth}: Action {action}, NextPose {next_sim_pose_id}, StepG={step_G:.3f}, CumulG={cumulative_G:.3f}")
 
             # 5. Update simulated state
             current_sim_qs = next_sim_qs
@@ -360,7 +411,7 @@ class MCTS:
         # logging.debug(f"--- Rollout Phase End (Node: {start_node.id}, Total Rollout G: {cumulative_G:.3f}) ---")
         return cumulative_G / depth
     
-    def _backpropagate(self, node, reward):
+    def _backpropagate(self, node:object, reward:float)-> None:
         """Phase 4: Backpropagation - Update visit counts and total rewards up the tree."""
         # logging.debug(f"--- Backpropagation Start (Node: {node.id}, Reward: {reward:.3f}) ---")
         current = node
@@ -370,7 +421,6 @@ class MCTS:
             # logging.debug(f"  Updating Node {current.id}: N={current.N}, TR={current.total_reward:.3f}")
             current = current.parent
         # logging.debug(f"--- Backpropagation End ---")
-
 
     def run_simulation(self, root_node, max_rollout_depth):
         """Runs a single iteration of the MCTS algorithm (Select, Expand, Simulate, Backpropagate)."""
@@ -407,21 +457,22 @@ class MCTS:
         logging.info(f"Root node children stats: {children_info}")
         # logging.debug(f"=== Finished MCTS Simulation ===")
 
-
-    def plan(self, root_node, num_simulations, max_rollout_depth):
+    def plan(self, root_node:object, num_simulations:int, max_rollout_depth:int, data:dict=None)-> int: #dict
         """Runs the MCTS planning process for a given number of simulations."""
         logging.info(f"Starting MCTS planning from root node {root_node.id} for {num_simulations} simulations.")
         for i in range(num_simulations):
-            print()
+            # print()
             logging.info(f"--- Simulation {i+1}/{num_simulations} ---")
             self.run_simulation(root_node, max_rollout_depth)
 
         # After simulations, determine the best action from the root
-        best_action = self.get_best_action(root_node)
+        best_action, q_pi_actions_values = self.get_best_action(root_node)
+        # data['qpi'].append(q_pi_actions_values[0])
+        # data['efe'].append(q_pi_actions_values[1])
         logging.info(f"MCTS planning finished. Best action: {best_action}")
-        return best_action
+        return best_action, q_pi_actions_values
 
-    def get_best_action(self, root_node):
+    def get_best_action(self, root_node:object)->int:
         """Selects the best action from the root node after simulations."""
         if not root_node.childs:
             logging.warning("Root node has no children after simulations. Cannot determine best action.")
@@ -446,7 +497,7 @@ class MCTS:
 
         if len(available_actions)==0:
              logging.warning("No valid actions available from root node children.")
-             return None
+             return None, []
 
         q_pi, best_action_id = self.model_interface.infer_policy_over_actions(action_values, available_actions)
         logging.info(f"action average G: {action_values}")
@@ -460,11 +511,12 @@ class MCTS:
              if available_actions:
                 best_action_id = max(root_node.childs.keys(), key=lambda action: root_node.childs.get(action).N if root_node.childs.get(action) else -1)
              else:
-                 return None # No valid children
+                 return None, [] # No valid children
 
-        return best_action_id
-
-
+        full_action_values = [action_values[available_actions.index(a)] if a in available_actions else 0 for a in self.model_interface.get_possible_actions()]
+        full_q_pi = [q_pi[available_actions.index(a)] if a in available_actions else 0 for a in self.model_interface.get_possible_actions()]
+        return best_action_id, (full_q_pi, full_action_values)
+    
 # --- Utility Functions ---
 def plot_mcts_tree(root_node):
     """Visualises the Monte Carlo Tree Search (MCTS) tree."""
@@ -531,11 +583,11 @@ def pickle_load_model(store_path: str = None):
 # --- Main Execution ---
 if __name__ == "__main__":
     # --- Configuration ---
-    NUM_SIMULATIONS = 50  # Number of MCTS simulations per planning step
+    NUM_SIMULATIONS = 1  # Number of MCTS simulations per planning step
     NUM_STEPS = 1         # Number of actions to take in the environment
     MAX_ROLLOUT_DEPTH = 10 # Maximum depth for the simulation (rollout) phase
     C_PARAM = 5
-    MODEL_PATH = '/home/idlab332/workspace/ros_ws/src/map_dm_nav/map_dm_nav/test1_noob_model.pkl' # Path to your pickled model
+    MODEL_PATH = '/home/idlab332/workspace/ros_ws/tests/MCTS_test/step_6/model.pkl' # Path to your pickled model
     PLOT_TREE = True      # Whether to plot the MCTS tree after each planning step
 
     # --- Initialization ---
@@ -545,28 +597,38 @@ if __name__ == "__main__":
         exit() # Stop if model loading failed
 
     # Create the interface for the MCTS algorithm
-    model_interface = MCTS_Model_Interface(underlying_model)
+    # model_interface = MCTS_Model_Interface(underlying_model)
 
     # Create the MCTS algorithm instance
-    mcts = MCTS(model_interface, c_param=C_PARAM) # Adjust c_param if needed
+    mcts = MCTS(underlying_model, c_param=C_PARAM, num_simulation=NUM_SIMULATIONS, max_rollout_depth=MAX_ROLLOUT_DEPTH) # Adjust c_param if needed
 
     # Get action names for logging
-    map_action_names = model_interface.get_possible_actions() # Assuming pose 0 exists
+    map_action_names = underlying_model.get_possible_actions() # Assuming pose 0 exists
 
     # Define the initial state
-    initial_pose_id = 0 # Or get from your model/environment
+    initial_pose_id = 13 # Or get from your model/environment
     initial_belief_qs = underlying_model.get_belief_over_states() # Get initial belief
-    initial_observation = model_interface.get_expected_observation(initial_belief_qs)
+    initial_observation = underlying_model.get_expected_observation(initial_belief_qs)
+
+    obstacles = [2.589874029159546, 0.9837815761566162, 0.7970860600471497, 0.4551108181476593, 0.6897494792938232, 1.7591898441314697, 1.4865357875823975, 2.881073236465454, 4.1918206214904785, 3.2962751388549805, 3.6548335552215576, 2.8087234497070312]
+
+    next_possible_actions =  [0, 5, 6, 7, 8, 9, 10,  12]# underlying_model.define_next_possible_actions(obstacles)
+
+    print('next_possible_actions', next_possible_actions)
+    print('initial_observation', initial_observation)
+    print('initial_belief_qs', initial_belief_qs[0].round(3))
     # Root node has no parent and no action leading to it
     root_node = Node(state_qs=initial_belief_qs,
                      pose_id=initial_pose_id,
                      parent=None,
                      action_index=None,
+                     possible_actions= next_possible_actions,
                      observation=initial_observation)
 
     logging.info(f"===== Initial Root Node ID: {root_node.id} =====")
 
     # --- Simulation Loop ---
+    
     current_node = root_node
     start_time = datetime.datetime.now()
 
@@ -576,7 +638,7 @@ if __name__ == "__main__":
 
         # Plan the next action using MCTS
         # The root of the search is the current state node
-        best_action = mcts.plan(current_node, NUM_SIMULATIONS, MAX_ROLLOUT_DEPTH)
+        best_action, data = mcts.plan(current_node, NUM_SIMULATIONS, MAX_ROLLOUT_DEPTH)
 
         if best_action is None:
             logging.error("MCTS failed to find a best action. Stopping simulation.")
