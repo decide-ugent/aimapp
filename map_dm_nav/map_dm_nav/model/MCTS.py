@@ -207,7 +207,6 @@ class MCTS:
         self.max_rollout_depth = max_rollout_depth # Maximum depth for the simulation (rollout) phase
         logging.info(f"MCTS initialized with exploration parameter c={c_param}, num_simus={num_simulation}, max_depth={max_rollout_depth}, policy_alpha={AIF_model.alpha},  action_selection={AIF_model.action_selection}")
 
-    
     def start_mcts(self,state_qs:np.ndarray, pose_id:int, observation:np.ndarray, next_possible_actions:list= None, num_steps:int=1, logging=None)-> list:
         current_node = Node(state_qs=state_qs,
                 pose_id=pose_id,
@@ -260,16 +259,18 @@ class MCTS:
     def _expand_node_in_all_possible_direction(self, node:object)->object:
         """Phase 2: Expansion - Add a new child node for an untried action."""
         
-        node.possible_actions =[]
+        if node.possible_actions is None :
+            node.possible_actions =[]
+            all_possible_actions = self.model_interface.get_possible_actions()
+        else:
+            all_possible_actions = node.possible_actions
         node.childs = {}
             
-        all_possible_actions = self.model_interface.get_possible_actions()
-
         #we save as the current node child each new node created taking an action from current pose 
         for action in all_possible_actions:
-            #=== check if new  ===#
+            next_pose_id = self.model_interface.get_next_node_pose_id(node.pose_id, action)
+            #=== check if new  (redundant)===#
             if action not in node.possible_actions:
-                next_pose_id = self.model_interface.get_next_node_pose_id(node.pose_id, action)
                 if next_pose_id < 0: #no known or valid next node
                     continue
                 node.possible_actions.append(action)

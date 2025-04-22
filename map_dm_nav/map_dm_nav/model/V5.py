@@ -24,6 +24,7 @@ class Ours_V5_RW(Agent):
         self.preferred_ob = [-1,-1]
         self.simple_paths = True # less computationally expensive path than full coverage paths 
                                  #(consider only a few direction and never go back on path)
+
         self.lookahead_node_creation = lookahead_node_creation
         observations, agent_params = self.create_agent_params(num_obs=num_obs, num_states=num_states, observations=observations, \
                             learning_rate_pB=learning_rate_pB, dim=dim, lookahead_policy=lookahead_policy)
@@ -362,7 +363,7 @@ class Ours_V5_RW(Agent):
     
     
     #==== MCTS_CALL ====#
-    def define_actions_from_MCTS_run(self, logging=None, num_steps=1, **kwargs)->list: #,dict
+    def define_actions_from_MCTS_run(self,num_steps=1, logging=None,  **kwargs)->list: #,dict
         """ 
         MCTS RUN, UNDER TEST (SHOULD NOT BE RE-CREATED EACH RUN)
         TODO: adapt for when we want a full policy
@@ -409,6 +410,7 @@ class Ours_V5_RW(Agent):
         self.step_time()
         
         return best_actions[:num_steps], data
+    
     #==== INFERENCE ====#
 
     def infer_states(self, observation:list, action:np.ndarray= None ,save_hist:bool=True, partial_ob:int=None, qs:list=None):
@@ -760,6 +762,21 @@ class Ours_V5_RW(Agent):
         #     if value[0] <= angle < value[1]:  # Check if angle falls within range
         #         return key
         # return None
+
+
+    def calculate_min_dist_to_next_node(self, state_step:int=1):
+        return self.influence_radius * state_step + self.robot_dim/2#/3 to consider -a little- robot_dim when adding nodes.as_integer_ratio
+    
+    def define_next_possible_actions(self, obstacle_dist_per_actions:list):
+        min_dist = self.calculate_min_dist_to_next_node()
+        
+        n_actions = len(self.possible_actions) - ("STAY" in self.possible_actions.values())
+        possible_actions = [i for i in range(n_actions) if obstacle_dist_per_actions[i] >= min_dist]
+
+        if "STAY" in self.possible_actions.values():
+            possible_actions.append(n_actions)
+
+        return possible_actions
 
     #==== Update A, B, C ====#
     def update_A_with_data(self,obs:list, state:int)->np.ndarray:
@@ -1181,12 +1198,10 @@ class Ours_V5_RW(Agent):
             skip next action (as we want 6 nodes around if no obstacle anywhere)
             '''
         
-        if "STAY" in self.possible_actions.values():
-            n_actions = len(self.possible_actions) -1
-        else:
-            n_actions = len(self.possible_actions) 
+        n_actions = len(self.possible_actions) - ("STAY" in self.possible_actions.values())
         qs = self.get_belief_over_states()
-        min_dist_to_next_node = self.influence_radius + self.robot_dim/2#/3 to consider -a little- robot_dim when adding nodes.as_integer_ratio
+        
+        min_dist_to_next_node = self.calculate_min_dist_to_next_node()
         
         for action_id in range(n_actions):
             #print('______________________________')
@@ -1201,7 +1216,7 @@ class Ours_V5_RW(Agent):
             #9)
             #The second element is just to avoid any risk of infinity loop
             while no_obstacle and state_step<=self.lookahead_node_creation:
-                next_state_min_dist_to_next_node = self.influence_radius *state_step + self.robot_dim/2
+                next_state_min_dist_to_next_node = self.calculate_min_dist_to_next_node(state_step)
                 #1)
                 #Is obstacle too close?
                 #print('for action', action_id, 'obstacle', obstacle_dist_per_actions[action_id], 'min_dist for new state', next_state_min_dist_to_next_node)

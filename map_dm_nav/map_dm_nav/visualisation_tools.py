@@ -546,10 +546,11 @@ def generate_failed_step_save_dir(n_steps: int, store_path:Path=None):
     store_path.mkdir(exist_ok=True, parents=True)
     return store_path
 
-def save_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:list, poss_next_a:list, \
-                 scan_orientation:list, scan_dist:list, gt_odom:list, action_success:bool, elapsed_time:int,
+def save_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:list, scan_dist:list, gt_odom:list, action_success:bool, elapsed_time:int,
                  store_path:Path=None, action_select_data:dict=None)-> None:
-    n_steps = save_data_to_excel(model, ob_id, ob, ob_match_score, poss_next_a, scan_orientation, \
+    
+    next_possible_actions = model.define_next_possible_actions(scan_dist)
+    n_steps = save_data_to_excel(model, ob_id, ob, ob_match_score, next_possible_actions,
                        scan_dist,gt_odom, action_success, elapsed_time, store_path,action_select_data)
     
     store_path = generate_step_save_dir(n_steps, store_path)
@@ -598,9 +599,9 @@ def save_pose_data(model, ob, ob_id, obstacle_dist_per_actions, gt_odom=None, st
         file.write(str(obstacle_dist_per_actions))
 
 def save_failed_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:list, poss_next_a:list, \
-                 scan_orientation:list, scan_dist:list, gt_odom:list, action_success:bool,elapsed_time:int,
+                 scan_dist:list, gt_odom:list, action_success:bool,elapsed_time:int,
                  store_path:Path=None, action_select_data:dict=None):
-    n_steps = save_data_to_excel(model, ob_id, ob, ob_match_score, poss_next_a, scan_orientation, \
+    n_steps = save_data_to_excel(model, ob_id, ob, ob_match_score, poss_next_a, \
                        scan_dist,gt_odom, action_success, elapsed_time, store_path,action_select_data)
     
     store_path = generate_failed_step_save_dir(n_steps, store_path)
@@ -677,16 +678,16 @@ def save_plot_state_graph(model:object, store_path:Path=None) -> None:
 
 #====================== CSV process =================================#
 
-def save_data_to_excel(model, ob_id, ob, ob_match_score, poss_next_a, scan_orientation, \
+def save_data_to_excel(model, ob_id, ob, ob_match_score, poss_next_a, \
                        scan_dist,gt_odom, action_success, elapsed_time, store_path,action_select_data:dict=None):
     n_steps = model.get_current_timestep()
     data = process_data(model, ob_id, ob, ob_match_score, poss_next_a, n_steps, \
-                 scan_orientation, scan_dist,gt_odom,action_success, elapsed_time, action_select_data)
+                 scan_dist,gt_odom,action_success, elapsed_time, action_select_data)
     save_step_data_to_file(data, store_path)
     return n_steps
 
 def process_data(model:object, ob_id:int, ob:np.ndarray, ob_match_score:list, poss_next_a:list, n_steps:int, \
-                 scan_orientation:list, scan_dist:list,gt_odom:list,action_success:bool, elapsed_time:int, action_select_data:dict=None)->dict:
+                 scan_dist:list,gt_odom:list,action_success:bool, elapsed_time:int, action_select_data:dict=None)->dict:
     np.set_printoptions(threshold=sys.maxsize)
     data={'step': n_steps, 'time': elapsed_time , 'action_success': action_success, 'ob_id': ob_id, \
           'ob_match_score':ob_match_score, 'possible_next_actions':poss_next_a, \
@@ -705,7 +706,6 @@ def process_data(model:object, ob_id:int, ob:np.ndarray, ob_match_score:list, po
         action = model.action[0]
     data['applied_action'] = action
     # data['state_mapping'] = model.get_agent_state_mapping()
-    data['scan_orientation'] = list(scan_orientation)
     data['scan_dist'] = list(scan_dist)
     data['ob_shape'] = ob.shape
     # data['B matrix'] = str(model.get_B()) #else if B too big i lose info
@@ -715,18 +715,20 @@ def process_data(model:object, ob_id:int, ob:np.ndarray, ob_match_score:list, po
     #     for k,v in action_select_data.items():
     #         data[k] = v
         # data["bayesian_surprise"]= action_select_data["bayesian_surprise"]
-        if model.policy_len < 7:
-            data["qpi"] = action_select_data["qpi"]
-            data["efe"] = action_select_data["efe"]
+        
+        data["qpi"] = action_select_data["qpi"]
+        data["efe"] = action_select_data["efe"]
+        data["info_gain"] = action_select_data["info_gain"]
+        data['utility'] = action_select_data['utility']
+        if 'poses_efe' in data:
             data['poses_efe'] = action_select_data["poses_efe"]
-            data["info_gain"] = action_select_data["info_gain"]
-            data['utility'] = action_select_data['utility']
     else:
         data["qpi"] = None
         data["efe"] = None
-        data['poses_efe'] = None
         data["info_gain"] = None
         data['utility'] = None
+        if 'poses_efe' in data:
+            data['poses_efe'] = action_select_data["poses_efe"]
 
     return data
 
