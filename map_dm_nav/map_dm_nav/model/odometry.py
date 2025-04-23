@@ -1,6 +1,6 @@
 import numpy as np
 from .modules import euclidian_distance, clip_rad_360,pt_vector_angle_to_ref_pt, \
-                    from_degree_to_point, quadrilater_points, point_in_triangle_with_arc
+                    quadrilater_points, point_in_triangle_with_arc
 
 class PoseMemory(object):
     """

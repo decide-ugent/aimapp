@@ -9,7 +9,7 @@ from geometry_msgs.msg import Point
 import time
 from cv_bridge import CvBridge
 import cv2
-from sensor_msgs.msg import Image
+
 from map_dm_nav.motion.potential_field_client import PFClient
 from map_dm_nav.motion.nav2_client import Nav2Client
 from map_dm_nav.obs_transf.get_pano_multiple_camera_client import PanoramaMultipleCamClient
@@ -17,8 +17,7 @@ from map_dm_nav.obs_transf.observation_match import ViewMemory
 from map_dm_nav.model.V5 import Ours_V5_RW
 #visualisations
 from map_dm_nav.visualisation_tools import create_save_data_dir, save_failed_step_data, remove_white_border,\
-                                                    save_step_data, save_efe_plot,pickle_load_model, pickle_dump_model, plot_state_in_map_wt_gt, save_pose_data
-from map_dm_nav.model.modules import from_degree_to_point
+                                                    save_step_data, save_efe_plot,pickle_load_model, pickle_dump_model, save_pose_data
 
 os.environ["QT_QPA_PLATFORM"] = "xcb"
 

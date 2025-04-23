@@ -6,7 +6,7 @@ from map_dm_nav.model.pymdp.control import get_expected_obs, get_expected_states
 from map_dm_nav.model.pymdp.maths import softmax, spm_log_single
 from map_dm_nav.model.modules import *
 from map_dm_nav.model.pymdp.learning import update_obs_likelihood_dirichlet
-from .pymdp.maths import spm_dot
+# from .pymdp.maths import spm_dot
 
 
 class Ours_V5_RW(Agent):
@@ -22,8 +22,6 @@ class Ours_V5_RW(Agent):
         self.PoseMemory = PoseOdometry(self.possible_actions, influence_radius, robot_dim)
 
         self.preferred_ob = [-1,-1]
-        self.simple_paths = True # less computationally expensive path than full coverage paths 
-                                 #(consider only a few direction and never go back on path)
 
         self.lookahead_node_creation = lookahead_node_creation
         observations, agent_params = self.create_agent_params(num_obs=num_obs, num_states=num_states, observations=observations, \
@@ -94,7 +92,6 @@ class Ours_V5_RW(Agent):
             None
         """
       
-        # self.init_policies()
         self.reset(start_pose=self.PoseMemory.get_poses_from_memory()[0])
         if self.edge_handling_params["use_BMA"] and hasattr(self, "q_pi_hist"): #This is not compatible with our way of moving
             del self.q_pi_hist
@@ -110,17 +107,6 @@ class Ours_V5_RW(Agent):
             stay_action = [key for key, value in self.possible_actions.items() if value == 'STAY'][0]
             self.B[0] = set_stationary(self.B[0], stay_action)
         return 
-    
-    def init_policies(self):
-        policies = create_policies(self.policy_len, self.possible_actions,simple_paths= self.simple_paths)
-        self.policies = policies
-        assert all([len(self.num_controls) == policy.shape[1] for policy in self.policies]), "Number of control states is not consistent with policy dimensionalities"
-        
-        all_policies = np.vstack(self.policies)
-
-        assert all([n_c >= max_action for (n_c, max_action) in zip(self.num_controls, list(np.max(all_policies, axis =0)+1))]), "Maximum number of actions is not consistent with `num_controls`"
-        # Construct prior over policies (uniform if not specified) 
-        self.E = self._construct_E_prior()
 
     def reset(self, init_qs:np.ndarray=None, start_pose:tuple=None):
         """
