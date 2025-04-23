@@ -1,7 +1,7 @@
 import numpy as np
 import copy
-from .pymdp import maths, utils, inference, control
-from .pymdp.algos import run_mmp
+from map_dm_nav.model.pymdp import maths, utils, inference, control
+from map_dm_nav.model.pymdp.algos import run_mmp
 from collections import deque
 
 def min_delta(d1, d2, max_):
@@ -232,7 +232,7 @@ def point_in_triangle_with_arc(pt:list, polygon:list)-> bool:
     #  and in the circular region, then it's in the zone
     if is_within_radius_range(pt, arc_center, arc_radius) and \
         pt_between_vectors(pt, arc_center, p1,p2):
-       print(pt,'point_in_triangle_with_arc: In arc')
+       #print(pt,'point_in_triangle_with_arc: In arc')
        return True
 
     return False 
@@ -596,7 +596,6 @@ def update_posterior_policies(
         lnE = maths.spm_log_single(np.ones(n_policies) / n_policies)
     else:
         lnE =  maths.spm_log_single(E) 
-
     for idx, policy in enumerate(policies):
         qs_pi =  control.get_expected_states(qs, B, policy)
         qo_pi =  control.get_expected_obs(qs_pi, A)
@@ -979,7 +978,7 @@ def get_possible_poses_paths(start_pose:list,end_pose:list,  actions:dict)-> lis
             continue
         average_angle = np.mean(angle_range)
         angle_deg = float(average_angle) % 360
-        
+
         #print('angle', angle_deg, angle_deg >= quadrant_range[0], angle_deg <= quadrant_range[1] )
         if (angle_deg >= quadrant_range[0] and angle_deg <= quadrant_range[1] ) \
             or angle_deg+360 == quadrant_range[1] :  #this is for 0==360
@@ -1095,21 +1094,19 @@ def generate_paths_quadrating_area(lookahead, actions_dict):
     
     # Define the allowed motions 
     # (doesn't matter if doesn't correspond to actions_dict, paths are symmetrically created anyway)
-    if 'DOWN' in actions_dict:
-        allowed_actions = {'UP': [1, 0], 'DOWN': [-1, 0], 'RIGHT': [0, 1], 'LEFT': [0, -1]}
-    else:
-        allowed_actions = {}
-        for angle in actions_dict.keys():
-            try:
-                angle_deg = float(angle) % 360
-            except ValueError as e: 
-                if angle == 'STAY':
-                    continue
-                else:
-                    raise e
-            motion = from_degree_to_point(angle_deg)
-            # print(angle, motion)
-            allowed_actions[angle] = list(motion)
+   
+    allowed_actions = {}
+    for angle in actions_dict.keys():
+        try:
+            angle_deg = float(angle) % 360
+        except ValueError as e: 
+            if angle == 'STAY':
+                continue
+            else:
+                raise e
+        motion = from_degree_to_point(angle_deg)
+        # print(angle, motion)
+        allowed_actions[angle] = list(motion)
 
     def generate_paths_recursively(path, action_path):
         if len(path) == lookahead + 1:

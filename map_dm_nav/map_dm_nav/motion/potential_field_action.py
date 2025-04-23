@@ -235,7 +235,7 @@ class PotentialFieldAction(Node):
             
             angle_target = np.arctan2(y_final, x_final)
             angle_delta = angle_target - self.robot_theta
-            print('angle_delta before normalisation:', angle_delta)
+            # print('angle_delta before normalisation:', angle_delta)
             angle_delta = normalise_angle(angle_delta)
 
             #self.get_logger().info("angle to goal: %f, distance to goal: %f" % (angle_delta, self.delta_distance))
@@ -243,7 +243,7 @@ class PotentialFieldAction(Node):
             goal_handle.publish_feedback(feedback_msg)
             
             v_in, w_in = self.compute_velocities(self.delta_distance, angle_delta)
-            print('linear vel, angular vel:', v_in, w_in)
+            # print('linear vel, angular vel:', v_in, w_in)
             direction = Twist()
             if(abs(angle_delta) > self.angular_goal_tolerance) \
                 and self.delta_distance > self.distance_goal_tolerance \
@@ -260,12 +260,12 @@ class PotentialFieldAction(Node):
                 direction.linear.x  = 0.0
                 goal_reached = True
             else:
-                print('LAST ELSE')
+                # print('LAST ELSE')
                 direction.angular.z = 0.0
                 direction.linear.x  = 0.0
                 goal_reached = True
 
-            print('vel:', direction)
+            # print('vel:', direction)
             self.cmd_pub.publish(direction)
             self.execution_rate.sleep()
             #time.sleep(self.execution_rate)
@@ -412,7 +412,7 @@ def euclidian_distance(d1:list, d2:list)->int:
 
 def main():
     rclpy.init()
-    print('HERE')
+    # print('HERE')
     potential_field = PotentialFieldAction()
     
     # rclpy.spin(potential_field)
