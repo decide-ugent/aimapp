@@ -9,8 +9,9 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    warehouse_pkg_dir = get_package_share_directory('aws_robomaker_small_warehouse_world')
-    warehouse_launch_path = os.path.join(warehouse_pkg_dir, 'launch')
+    # warehouse_pkg_dir = get_package_share_directory('aws_robomaker_small_warehouse_world')
+    warehouse_pkg_dir = get_package_share_directory('map_dm_nav')
+    warehouse_launch_path = os.path.join(warehouse_pkg_dir, 'launch',  'worlds_launch')
    
     launch_file_dir = os.path.join(get_package_share_directory('turtlebot3_gazebo'), 'launch')
 
