@@ -14,15 +14,15 @@ input=$1
 case $input in
     1)
         source install/setup.bash 
-        ros2 launch high_level_nav_warehouse warehouse_launch.py
+        ros2 launch map_dm_nav warehouse_launch.py
         ;;
     2)
         source install/setup.bash 
-        ros2 launch high_level_nav_warehouse spawn_turtle_launch.py x:=0.0 y:=0.0
+        ros2 launch map_dm_nav spawn_turtle_launch.py x:=0.0 y:=0.0
         ;;
     3)
         source install/setup.bash 
-        ros2 launch high_level_nav_warehouse agent_launch.py
+        ros2 launch map_dm_nav agent_launch.py
         ;;
     *)
         echo "Invalid input. Please provide 1:env start, 2:agent start, or 3:model start."
