@@ -14,7 +14,6 @@ from PIL import ImageGrab
 import pandas
 import networkx as nx
 
-from map_dm_nav.model.modules import from_degree_to_point
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend, works headless
 
@@ -285,6 +284,8 @@ def plot_state_in_map(B: np.ndarray, state_mapping: dict,fig_ax=[None, None]) ->
     plt.title('State Transitions', fontsize=35)
     plt.grid(False)
 
+    return fig
+
 def plot_state_in_map_wt_gt_model_transition(model1:object, model2:object, gt_odom:list) -> np.ndarray: 
     """ 
     This alternative function highligts the difference in transitions 
@@ -312,7 +313,7 @@ def plot_state_in_map_model_transition(model1, model2, fig_ax=[None, None]) -> n
 
     Return plot
     """
-
+    raise 'plot_state_in_map_model_transition TOREDO as we use from_degree_to_point'
     B1 = model1.get_B()
     state_mapping1 = model1.get_agent_state_mapping()
     possible_actions = model1.possible_directions
@@ -768,17 +769,28 @@ def pickle_dump_model(model:object, store_path:Path=None)-> None:
     # Serialize (pickle) the model instance to a file
     if store_path is None:
         store_path = get_save_data_dir()
-    with open(store_path / 'model.pkl', 'wb') as f:
-        pickle.dump(model, f)
 
-def pickle_load_model(store_path:str=None)-> None:
+    temp_path = store_path / 'model_temp.pkl'
+    final_path = store_path / 'model.pkl' #there is an issue if we read model as we write it
+    with open(temp_path, 'wb') as f:
+        pickle.dump(model, f)
+    os.rename(str(temp_path), str(final_path))
+
+
+def pickle_load_model(store_path:str=None, max_retries:int=7, delay:float=0.6)-> None:
     if store_path is None:
         store_path = get_save_data_dir()
     else:
         store_path = Path(store_path)
-    with open(store_path/ 'model.pkl', 'rb') as f:
-        loaded_model= pickle.load(f)
-    return loaded_model
+
+    for attempt in range(max_retries):
+        try:
+            with open(store_path/ 'model.pkl', 'rb') as f:
+                return pickle.load(f)
+        except (EOFError, pickle.UnpicklingError) as e:
+            print(f"[WARN] Failed to load pickle (attempt {attempt + 1}/{max_retries}): {e}")
+            time.sleep(delay)
+    raise RuntimeError("Failed to load pickle file after retries.")
 
 #======================= PLOT PATH FROM CSV ===========================#
 

@@ -10,8 +10,10 @@ import os
 import time
 import matplotlib.pyplot as plt
 import numpy as np
-from map_dm_nav.visualisation_tools import pickle_load_model, plot_state_in_map_wt_gt
 import csv
+
+
+from map_dm_nav.visualisation_tools import plot_state_in_map_wt_gt, pickle_load_model
 
 class DataSaver(Node):
     def __init__(self):
@@ -170,6 +172,19 @@ class DataSaver(Node):
         map = self.create_map(model)
         self.save_image(elapsed_time, map, self.save_map_folder)
         self.save_csv_data(elapsed_time)
+
+# def plot_state_in_map_wt_gt(model:object, gt_odom:list, odom:list=None) -> np.ndarray: 
+#     dim = max(25, int(model.get_n_states()/2))
+#     fig, ax = plt.subplots(figsize=(dim,dim))  
+#     circle=plt.Circle((gt_odom[1], gt_odom[0]),radius=0.21,fill=True, color='0.5') #linestyle='dotted'
+#     plt.gca().add_patch(circle)
+#     if odom is not None:
+#         circle2=plt.Circle((odom[1], odom[0]),radius=0.15,fill=True, color='0.2') #linestyle='dotted'
+#         plt.gca().add_patch(circle2)
+#     plt.plot()
+#     fig = plot_state_in_map(model.get_B(),model.get_agent_state_mapping(), fig_ax=[fig,ax])
+#     return fig
+
 
 def main(args=None):
     rclpy.init(args=args)
