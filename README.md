@@ -67,9 +67,15 @@ Before you begin, ensure you have the following installed:
 cd map_dm_nav/map_dm_nav
 pip install -e .
 ```
+```bash
+cd /home/YOUR_ROS_WP/src/ \
+&& git clone https://github.com/ROBOTIS-GIT/turtlebot3_simulations -b humble \
+&& git clone https://github.com/aws-robotics/aws-robomaker-small-warehouse-world -b ros2 \
+&& git clone https://github.com/aws-robotics/aws-robomaker-small-house-world -b ros2 
+```
 
-Make sure the robot we are calling exist (we created a waffle robot with 3 cameras)
--> look at the `COPY` in the Dockerfile to copy paste the modifications done to the worlds and turtlebot3 in the appropriate locations.
+Make sure the robot we are calling exist (we created a waffle robot with 3 cameras, to change the turtle version, go in spawn_turtle_launch.py)
+-> look at the `COPY` in the Dockerfile to copy paste the modifications done to the worlds and turtlebot3 in the appropriate locations (to have all our worlds + top view camera -optional-).
 
 
 ## Start the project
@@ -77,6 +83,13 @@ Start the world
 ```
 source install/setup.bash 
 ros2 launch map_dm_nav warehouse_launch.py
+```
+
+OR
+```
+export GAZEBO_MODEL_PATH=`pwd`/models
+source /usr/share/gazebo/setup.sh
+ros2 launch aws_robomaker_small_house_world small_house.launch.py gui:=true
 ```
 
 **Spawn the agent**
