@@ -31,7 +31,7 @@ def generate_launch_description():
 	# Launch configuration variables specific to simulation
 	use_sim_time = LaunchConfiguration('use_sim_time')
 	use_simulator = LaunchConfiguration('use_simulator')
-	headless = LaunchConfiguration('headless')
+	headless = LaunchConfiguration('headless',  default=False)
 	world = LaunchConfiguration('world')
 
 	declare_use_sim_time_cmd = DeclareLaunchArgument(

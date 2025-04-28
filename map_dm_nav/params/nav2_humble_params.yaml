@@ -57,7 +57,7 @@ bt_navigator:
     default_server_timeout: 20
     wait_for_service_timeout: 1000
     enable_groot_monitoring: True
-    default_bt_xml_filename: "/home/idlab332/workspace/ros_ws/src/map_dm_nav/map_dm_nav/params/navigate_w_replanning_and_recovery.xml"
+    default_bt_xml_filename: "navigate_w_replanning_and_recovery.xml"
     plugin_lib_names:
       - nav2_compute_path_to_pose_action_bt_node
       - nav2_compute_path_through_poses_action_bt_node
