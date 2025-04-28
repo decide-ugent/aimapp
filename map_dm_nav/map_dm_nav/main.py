@@ -31,7 +31,7 @@ class HighLevelNav_ROSInterface(Node):
         self.goal_path = goal_path
 
         #dist motion in m 
-        self.influence_radius = 1
+        self.influence_radius = 2
         self.robot_dim = 0.3
         #The lidar must say that there is X free dist behind position to consider it free #security
 
@@ -74,9 +74,9 @@ class HighLevelNav_ROSInterface(Node):
             obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(n_actions)
             #create model
             self.model = Ours_V5_RW(num_obs=2, num_states=2, dim=2, \
-                                    observations=[ob_id], lookahead_policy=5,\
+                                    observations=[ob_id], \
                                     n_actions=13, influence_radius=self.influence_radius,\
-                                    robot_dim=self.robot_dim, lookahead_node_creation= 2)
+                                    robot_dim=self.robot_dim, lookahead_node_creation= 8)
             
             self.model.set_memory_views(self.Views.get_memory_views())
             self.model.update_transition_nodes(obstacle_dist_per_actions=obstacle_dist_per_actions)
@@ -336,7 +336,7 @@ def main(args=None):
     """
 
     possible_actions = 13 # circle / 12 + STAY action
-    policy = [None] * 20
+    policy = [None] * 200
     #policy = [(1,0),(1,1),(0,1), (0,0)]
     #policy = [6, 5, 6, 0, 3, 5, 0, 1, 4, 4, 7, 4, 2, 3, 0, 6, 8, 5, 4, 4, 2, 1, 1, 4, 1, 4, 8] #an action is a direction to take in global coordinate (0:0degree in GP)
     
@@ -371,7 +371,7 @@ def main(args=None):
         
         obstacle_dist_per_actions, ob_id, ob_match_score = highlevelnav.model_step_process(action)
         highlevelnav.get_logger().info('qs: ' +str(highlevelnav.model.get_belief_over_states()[0].round(3)))
-        p_idx = highlevelnav.model.infer_current_most_likely_pose(observations= [ob_id], z_score=5)
+        p_idx = highlevelnav.model.infer_current_most_likely_pose(observations= [ob_id], z_score=10)
         highlevelnav.get_logger().info('POSE: ' +str(highlevelnav.model.PoseMemory.get_odom())+','+str(highlevelnav.model.current_pose) + 'p_idx: ' + str(p_idx))
         highlevelnav.share_believed_odom(p_idx) #send internally believed pose to /odom so it matches internal belief
         save_data_process(highlevelnav, ob_id, ob_match_score, obstacle_dist_per_actions=obstacle_dist_per_actions, store_dir= store_dir, data= action_data)
