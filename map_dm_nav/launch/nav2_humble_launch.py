@@ -16,9 +16,9 @@ def generate_launch_description():
     rviz_file = os.path.join(get_package_share_directory('map_dm_nav'), 'rviz', 'nav2_default_view.rviz')
 
 
-    namespace = "gazebo"
+    namespace = ""
     param_substitutions = {
-        'use_sim_time': 'True',
+        'use_sim_time': 'False',
         # 'yaml_filename': map_file
     }
 

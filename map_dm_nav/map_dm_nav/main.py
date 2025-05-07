@@ -13,6 +13,7 @@ import cv2
 from map_dm_nav.motion.potential_field_client import PFClient
 from map_dm_nav.motion.nav2_client import Nav2Client
 from map_dm_nav.obs_transf.get_pano_multiple_camera_client import PanoramaMultipleCamClient
+from map_dm_nav.obs_transf.get_360_camera_client import Panorama360CamClient
 from map_dm_nav.obs_transf.observation_match import ViewMemory
 from map_dm_nav.model.V5 import Ours_V5_RW
 #visualisations
@@ -31,11 +32,11 @@ class HighLevelNav_ROSInterface(Node):
         self.goal_path = goal_path
 
         #dist motion in m 
-        self.influence_radius = 2
-        self.robot_dim = 0.3
+        self.influence_radius = 0.5
+        self.robot_dim = 0.33
         #The lidar must say that there is X free dist behind position to consider it free #security
 
-        self.panorama_client = PanoramaMultipleCamClient()
+        self.panorama_client = Panorama360CamClient()
 
   
         self.motion_client = Nav2Client()

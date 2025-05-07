@@ -3,9 +3,8 @@ import rclpy
 import numpy as np
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
-from sensor_msgs.msg import Image, LaserScan
+from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Twist
 import threading
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from map_dm_nav_actions.action import Panorama   
@@ -107,8 +106,10 @@ class GeneratePanorama360Cam(Node):
         self.get_logger().info('goal_angles'+str(goal_handle.request))
         
         goal_angles = goal_handle.request.goal_angles
+        n_actions = goal_handle.request.n_actions
         feedback_msg = Panorama.Feedback()
         result = Panorama.Result()
+        actions_range = self.generate_action_range(n_actions)
 
         #Take a picture with camera (might take a few try) 
         #Then get the latest image in folder and save it in a list
@@ -118,63 +119,53 @@ class GeneratePanorama360Cam(Node):
         # print(f"Latest image: {latest_image_path}")
         images_compilation = list(read_image(latest_image_path))
 
-        while self.last_scan or self.robot_odom is None :
+        while self.last_scan is None :
             self.execution_rate.sleep()
+        laser_compilation = self.compute_scan_dist(actions_range)
 
-        orientation_compilation, laser_compilation = self.compute_scan_dist()
-        self.get_logger().info(str(type(orientation_compilation)) + str(orientation_compilation))
         result.panorama = images_compilation
         result.pano_scan = laser_compilation
-        result.orientations = orientation_compilation
+        self.get_logger().info("laser_compilation:" + str(laser_compilation))
         self.get_logger().info('Incoming response composed of : %s data'  % (str(len(images_compilation)))) 
         return result
 
     
-    def compute_scan_dist(self) -> float:
+    def compute_scan_dist(self,actions_range) -> float:
         """This assumes a 360` lidar. Won't work with a forward lidar"""
         
         angle_min = self.last_scan.angle_min
         angle_max = self.last_scan.angle_max
         range_max = self.last_scan.range_max
-        step = self.last_scan.angle_increment
+        angle_increment = (abs(angle_min) + abs(angle_max)) / (np.pi*2)
         scan = [range_max if (x == np.inf or np.isnan(x)) else x for x in self.last_scan.ranges]
-        scan_range  = len(scan)
 
-        angle_per_step = (angle_max + abs(angle_min)) / step #rad/step
-
-        #How many step left and right should we check lidar as well
-        step_range = int(np.round(0.1/angle_per_step /2))#rad so ~6deg 
-        desired_angles = np.linspace(0, 2*np.pi, 16, endpoint=False)
-        desired_angles = [float(angle) for angle in desired_angles]
-
-        angles = angle_min + np.arange(scan_range) * step
-        angles = np.mod(angles + self.robot_odom[2], 2 * np.pi) 
-        
-        
-        
         lidar_dist = []
-        deg_angles = []
-        for desired_angle in desired_angles:
-            # Find the closest LIDAR measurement to the desired angle
-            idx = (np.abs(angles - desired_angle)).argmin()
-            obstacle_dist = 0
-            #this in two lines to consider negative values as idx
-            for i in range(idx-step_range, idx+step_range+1,1):
-                if i >= scan_range: 
-                    i = scan_range -i 
-                obstacle_dist+=scan[i]
-            obstacle_dist = obstacle_dist/(step_range*2+1)
-            print('desired_angle,',np.rad2deg(desired_angle),'idx',idx,'dist', obstacle_dist) 
-            lidar_dist.append(obstacle_dist)
-            deg_angles.append(np.rad2deg(desired_angle))
+        ob_dist_per_action = [[] for a in range(len(actions_range))] 
+        for id, scan_info in enumerate(scan):
+            
+            curr_ray_angle_deg_prev = \
+            (np.rad2deg(self.robot_odom[2]) + \
+             np.rad2deg(angle_min) + (id * angle_increment))
+            curr_ray_angle_deg = curr_ray_angle_deg_prev % 360 
+            #self.get_logger().info(f'curr_ray_angle_deg, ob_dist: {id} {round(curr_ray_angle_deg_prev,1)} {round(curr_ray_angle_deg,1)} {round(scan_info,2)}')
+            action_id = next(key for key, value in actions_range.items() if curr_ray_angle_deg >= value[0] and curr_ray_angle_deg <= value[1] )
+            if curr_ray_angle_deg > 170 and curr_ray_angle_deg < 180 and scan_info < 15: #Position of the camera
+                pass 
+            ob_dist_per_action[action_id].append(scan_info)
 
-
-        self.get_logger().info('desired_angle: %s' % str(deg_angles))
-        self.get_logger().info('lidar_dist: %s' % str(lidar_dist))
-      
-        return desired_angles, lidar_dist
+        lidar_dist = [np.mean(ob_dist_per_action) for ob_dist_per_action in ob_dist_per_action]
+        #self.get_logger().info(f'lidar_dist: {lidar_dist}')
+        return lidar_dist
     
-
+    def generate_action_range(self, n_actions):
+        zone_range_deg = round(360/n_actions,1)
+        n_actions_keys = np.arange(0, n_actions, 1)
+        zone_spacing_deg = np.arange(0, 361, zone_range_deg)
+        possible_actions = {}
+        for action_key in n_actions_keys:
+            possible_actions[action_key] = [round(zone_spacing_deg[action_key]), round(zone_spacing_deg[action_key+1]),]
+    
+        return possible_actions
     """************************************************************
     ** ROS CALLBACKS
     ************************************************************"""
