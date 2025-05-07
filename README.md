@@ -84,6 +84,8 @@ Start the world
 source install/setup.bash 
 ros2 launch map_dm_nav warehouse_launch.py
 ```
+%if no turtlebot spawn do a :
+```export GAZEBO_MODEL_PATH=/home/ros2_ws/install/turtlebot3_gazebo/share/turtlebot3_gazebo/models:$GAZEBO_MODEL_PATH```
 
 OR
 ```
