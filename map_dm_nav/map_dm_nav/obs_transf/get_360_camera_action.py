@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import rclpy
 import numpy as np
+import tf2_ros 
+
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from sensor_msgs.msg import LaserScan
@@ -18,9 +20,13 @@ class GeneratePanorama360Cam(Node):
         super().__init__('generate_panorama_from_ricoh_camera')
         self.last_scan = None
         self.robot_odom = None
-        self.images_dir = "/home/theta_ricoh_x/images"
+        self.tf_theta = None
+        self.images_dir = "/home/husarion/Pictures/theta_ricoh_x"
 
         self.execution_rate =  self.create_rate(1) #sec = 1/Hz
+
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         """************************************************************
         ** Initialise ROS subscribers
@@ -32,7 +38,7 @@ class GeneratePanorama360Cam(Node):
                 10)        
         self.odom_sub = self.create_subscription(
                 Odometry,
-                '/odom',
+                'odom',
                 self.odom_callback,
                 5)
         
@@ -55,6 +61,8 @@ class GeneratePanorama360Cam(Node):
             cancel_callback=self.cancel_callback,
             result_timeout=2000)
         
+
+        self.get_tf_transform()
         self.get_logger().info('Node generate_panorama initialised')
     
     """************************************************************
@@ -104,7 +112,8 @@ class GeneratePanorama360Cam(Node):
         LidarScan assumes 360' lidar
         """
         self.get_logger().info('goal_angles'+str(goal_handle.request))
-        
+        if self.tf_theta is None:
+            self.get_tf_transform()
         goal_angles = goal_handle.request.goal_angles
         n_actions = goal_handle.request.n_actions
         feedback_msg = Panorama.Feedback()
@@ -119,7 +128,7 @@ class GeneratePanorama360Cam(Node):
         # print(f"Latest image: {latest_image_path}")
         images_compilation = list(read_image(latest_image_path))
 
-        while self.last_scan is None :
+        while self.last_scan is None or self.robot_odom is None:
             self.execution_rate.sleep()
         laser_compilation = self.compute_scan_dist(actions_range)
 
@@ -129,32 +138,41 @@ class GeneratePanorama360Cam(Node):
         self.get_logger().info('Incoming response composed of : %s data'  % (str(len(images_compilation)))) 
         return result
 
-    
+
     def compute_scan_dist(self,actions_range) -> float:
         """This assumes a 360` lidar. Won't work with a forward lidar"""
         
         angle_min = self.last_scan.angle_min
         angle_max = self.last_scan.angle_max
         range_max = self.last_scan.range_max
-        angle_increment = (abs(angle_min) + abs(angle_max)) / (np.pi*2)
+        angle_increment = self.last_scan.angle_increment 
         scan = [range_max if (x == np.inf or np.isnan(x)) else x for x in self.last_scan.ranges]
-
+        #self.get_logger().info(f'length scan:{len(scan)}')
         lidar_dist = []
-        ob_dist_per_action = [[] for a in range(len(actions_range))] 
+        ob_dist_per_actions = [[] for a in range(len(actions_range))] 
+        if self.tf_theta is None:
+            theta_offset = 0.0
+        else:
+            theta_offset = self.tf_theta
         for id, scan_info in enumerate(scan):
             
-            curr_ray_angle_deg_prev = \
-            (np.rad2deg(self.robot_odom[2]) + \
-             np.rad2deg(angle_min) + (id * angle_increment))
-            curr_ray_angle_deg = curr_ray_angle_deg_prev % 360 
-            #self.get_logger().info(f'curr_ray_angle_deg, ob_dist: {id} {round(curr_ray_angle_deg_prev,1)} {round(curr_ray_angle_deg,1)} {round(scan_info,2)}')
+            curr_ray_angle_rad = \
+            (self.robot_odom[2] + theta_offset + \
+             angle_min + (id * angle_increment))
+            curr_ray_angle_deg = np.rad2deg(curr_ray_angle_rad) % 360 
+            #self.get_logger().info(f'curr_ray_angle_deg, ob_dist: {id} {round(curr_ray_angle_rad,1)} {round(curr_ray_angle_deg,1)} {round(scan_info,2)}')
             action_id = next(key for key, value in actions_range.items() if curr_ray_angle_deg >= value[0] and curr_ray_angle_deg <= value[1] )
-            if curr_ray_angle_deg > 170 and curr_ray_angle_deg < 180 and scan_info < 15: #Position of the camera
-                pass 
-            ob_dist_per_action[action_id].append(scan_info)
+            if scan_info < 0.18 and curr_ray_angle_deg > 178 and curr_ray_angle_deg < 183: #Position of the camera 
+                # self.get_logger().info(f'angle:{curr_ray_angle_deg}, lidar_dist: {scan_info}') 
+                continue
+            ob_dist_per_actions[action_id].append(scan_info)
 
-        lidar_dist = [np.mean(ob_dist_per_action) for ob_dist_per_action in ob_dist_per_action]
-        #self.get_logger().info(f'lidar_dist: {lidar_dist}')
+        lidar_dist = [np.mean(ob_dist_per_action) for ob_dist_per_action in ob_dist_per_actions]
+        # for i in range(len(lidar_dist)):
+        #     if np.isnan(lidar_dist[i]):
+        #         self.get_logger().info('Incoming response composed of : %s data'  % (str(ob_dist_per_actions[i]))) 
+
+        # self.get_logger().info(f'lidar_dist: {lidar_dist}')
         return lidar_dist
     
     def generate_action_range(self, n_actions):
@@ -166,16 +184,38 @@ class GeneratePanorama360Cam(Node):
             possible_actions[action_key] = [round(zone_spacing_deg[action_key]), round(zone_spacing_deg[action_key+1]),]
     
         return possible_actions
+    
+    def get_tf_transform(self):
+        try:
+            tf = self.tf_buffer.lookup_transform(
+                'base_link',  # target frame
+                'laser',      # source frame
+                rclpy.time.Time())  # get the latest available
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+            self.get_logger().warn("TF from base_link to laser not available.")
+            return 
+        
+        euler_angles = ros_quaternion_to_euler(tf.transform.rotation)
+        theta = np.round(euler_angles[2], 4)
+        #I want theta between 0-4*pi, not 0-2pi/-2pi-0
+        if theta < 0:
+            theta += 2*np.pi
+        
+        self.tf_theta = theta
+        self.get_logger().info(f'tf theta: {theta}')
+
     """************************************************************
     ** ROS CALLBACKS
     ************************************************************"""
     def lidar_callback(self, msg):
-        # self.get_logger().info('I heard scan: "%s"' % msg.range_max)
+        # if self.last_scan is None:
+            # self.get_logger().info('I heard: scan')
         self.last_scan = msg
         #print('self.last_scan in callback', self.last_scan.range_max)
 
     def odom_callback(self, msg):
-        #self.get_logger().info('I heard: "%s"' % msg.pose.pose.position)
+        # if self.robot_odom is None:
+            # self.get_logger().info('I heard: odom')
         self.robot_odom = extract_robot_xy_theta(msg)
 
 def extract_robot_xy_theta(odom_msg)->np.ndarray:

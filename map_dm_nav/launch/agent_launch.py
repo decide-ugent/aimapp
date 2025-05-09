@@ -1,8 +1,6 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.actions import ExecuteProcess
 import os
-import re
 from launch.substitutions import LaunchConfiguration
 
 DESKTOP_RESULTS_FOLDER=os.getcwd()
@@ -24,9 +22,9 @@ def generate_launch_description():
             namespace='agent',
             executable='get_pano_multiple_camera_action.py',
             remappings=[
-                ('/agent/cmd_vel', '/XXX/cmd_vel'),
-                ('/agent/odom','/odom'),
-                ('/agent/scan', '/XXX/scan'),
+                ('/agent/cmd_vel', '/cmd_vel'),
+                ('/agent/odom','/rosbot_xl_base_controller/odom'),
+                ('/agent/scan', '/scan'),
                 ('/agent/camera_front/image_raw', '/XXX/camera_front/image_raw'),
                 ('/agent/camera_right/image_raw', '/XXX/camera_right/image_raw'),
                 ('/agent/camera_left/image_raw', '/XXX/camera_left/image_raw'),
@@ -38,8 +36,8 @@ def generate_launch_description():
             namespace='agent',
             executable='get_360_camera_action.py',
             remappings=[
-                ('/agent/odom','/odom'),
-                ('/agent/scan', '/XXX/scan'),
+                ('/agent/odom','/rosbot_xl_base_controller/odom'),
+                ('/agent/scan', '/scan'),
             ]
         )
     
@@ -49,9 +47,9 @@ def generate_launch_description():
             executable='potential_field_action.py',
             namespace='agent',
             remappings=[
-                ('/agent/cmd_vel','/XXX/cmd_vel'),
-                ('/agent/odom','/odom'),
-                ('/agent/scan','/XXX/scan'),
+                ('/agent/cmd_vel','/cmd_vel'),
+                ('/agent/odom','/rosbot_xl_base_controller/odom'),
+                ('/agent/scan','/scan'),
             ]
         )
 

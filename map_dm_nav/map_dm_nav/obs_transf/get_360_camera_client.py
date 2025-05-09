@@ -34,14 +34,14 @@ class Panorama360CamClient(Node):
 
         return self.panorama_result
 
-    def send_panorama_goal(self, n_turn_stops:int=2,n_actions:int=6):
+    def send_panorama_goal(self, n_turn_stops:int=2,n_actions:int=12):
         """ 
         ACTION
         Receive the number of stop to do during a 360* turn 
         and send it to the service to get panorama 
         """
         goal_msg = Panorama.Goal()
-        goal_msg.goal_angles = [0]
+        goal_msg.goal_angles = [0.0]
         goal_msg.n_actions = n_actions
 
         self.get_panorama.wait_for_server()
@@ -83,7 +83,8 @@ def main(x):
     n_turn = x
     future = panorama_client.turn_to_get_panorama(n_turn)
     
-    rclpy.spin_until_future_complete(panorama_client, future)
+    # rclpy.spin_until_future_complete(panorama_client, future)
+    rclpy.spin(panorama_client)
     panorama_client.get_logger().info('Done')
     # %s' %  str(response.status))
 

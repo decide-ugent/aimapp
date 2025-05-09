@@ -2,11 +2,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
 from launch_ros.actions import Node
-from launch.launch_description_sources import PythonLaunchDescriptionSource
-from nav2_common.launch import RewrittenYaml, ReplaceString
-from launch_ros.descriptions import ParameterFile
 
 def generate_launch_description():
     
@@ -26,8 +22,8 @@ def generate_launch_description():
         ('/tf', 'tf'),
         ('/tf_static', 'tf_static'),
         ('/odom', 'odom'),
-        ('scan', f'/{namespace}/scan'),
-        ('/cmd_vel', f'/{namespace}/cmd_vel')
+        ('scan', f'/{namespace}scan'),
+        ('/cmd_vel', f'/{namespace}cmd_vel')
     ]
 
     # nav2_yaml = RewrittenYaml(

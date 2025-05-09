@@ -136,7 +136,7 @@ controller_server:
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.2
+      xy_goal_tolerance: 0.1
       yaw_goal_tolerance: 6.0
     # DWB parameters
     FollowPath:
@@ -154,7 +154,7 @@ controller_server:
       # https://github.com/ROBOTIS-GIT/turtlebot3_simulations/issues/75
       acc_lim_x: 1.5
       acc_lim_y: 0.0
-      acc_lim_theta: 2.2
+      acc_lim_theta: 3.2
       decel_lim_x: -1.5
       decel_lim_y: 0.0
       decel_lim_theta: -2.2
@@ -197,7 +197,7 @@ local_costmap:
       width: 8
       height: 8
       resolution: 0.05
-      robot_radius: 0.22
+      robot_radius: 0.3
       plugins: ["voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -219,10 +219,10 @@ local_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
-          raytrace_max_range: 3.0
-          raytrace_min_range: 0.02
-          obstacle_max_range: 3.0
-          obstacle_min_range: 0.0
+          raytrace_max_range: 12.0
+          raytrace_min_range: 0.18
+          obstacle_max_range: 12.0
+          obstacle_min_range: 0.18
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
@@ -236,7 +236,7 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       use_sim_time: True
-      robot_radius: 0.22
+      robot_radius: 0.3
       resolution: 0.05
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
@@ -250,10 +250,10 @@ global_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
-          raytrace_max_range: 3.0
-          raytrace_min_range: 0.02
-          obstacle_max_range: 3.0
-          obstacle_min_range: 0.0
+          raytrace_max_range: 12.0
+          raytrace_min_range: 0.18
+          obstacle_max_range: 12.0
+          obstacle_min_range: 0.18
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
@@ -315,7 +315,7 @@ recoveries_server:
     use_sim_time: true
     simulate_ahead_time: 2.0
     max_rotational_vel: 1.0
-    min_rotational_vel: 0.4
+    min_rotational_vel: 0.2
     rotational_acc_lim: 3.2
 
 robot_state_publisher:
@@ -344,5 +344,5 @@ behavior_server:
     use_sim_time: true
     simulate_ahead_time: 2.0
     max_rotational_vel: 1.0
-    min_rotational_vel: 0.4
+    min_rotational_vel: 0.2
     rotational_acc_lim: 3.2
