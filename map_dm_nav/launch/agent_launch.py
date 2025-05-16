@@ -34,7 +34,7 @@ def generate_launch_description():
     panorama_360_action = Node(
             package='map_dm_nav',
             namespace='agent',
-            executable='get_360_camera_action.py',
+            executable='get_360_camera_remote_action.py',
             remappings=[
                 ('/agent/odom','/odometry/filtered'),
                 ('/agent/scan', '/scan_filtered'),

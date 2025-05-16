@@ -81,7 +81,7 @@ def main(x):
 
     panorama_client = Panorama360CamClient()
     n_turn = x
-    future = panorama_client.turn_to_get_panorama(n_turn)
+    future = panorama_client.turn_to_get_panorama(n_turn, n_actions=12)
     
     # rclpy.spin_until_future_complete(panorama_client, future)
     rclpy.spin(panorama_client)

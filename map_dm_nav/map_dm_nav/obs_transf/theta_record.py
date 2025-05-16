@@ -50,6 +50,36 @@ def capture_image(images_dir,iteration):
         if iteration < 5:
             capture_image(images_dir, iteration=iteration+1)
 
+def find_file(name, path=None, logging=None):
+    if path is None:
+        path = os.path.expanduser("~")
+
+    for root, dirs, files in os.walk(path):
+        if name in files and not 'python' in root:
+            return os.path.join(root, name)
+        
+
+def capture_image_from_bash(logging=None):
+    """
+    Runs the take_remote_picture.sh script to trigger image capture on the robot,
+    transfer the image to the local machine, and print status.
+    """
+    script_path = find_file('take_remote_picture.sh', logging=logging)   
+    if logging: 
+        logging.info(str(script_path)+ str(type(script_path)))
+    try:
+        result = subprocess.run(
+            [script_path],
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        print("Script output:\n", result.stdout)
+    except subprocess.CalledProcessError as e:
+        print("Error running script:\n", e.stderr)
+        raise
+
+
 def get_latest_image_file(directory):
     """ we get the latest date image from repo"""
     # Get all files in the directory
@@ -107,3 +137,4 @@ def main():
 if __name__ == "__main__":
     main()
     
+

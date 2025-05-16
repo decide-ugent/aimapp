@@ -44,6 +44,7 @@ install(PROGRAMS
   map_dm_nav/obs_transf/get_panorama_action.py
   map_dm_nav/obs_transf/get_panorama_client.py
   map_dm_nav/obs_transf/get_360_camera_action.py
+  map_dm_nav/obs_transf/get_360_camera_remote_action.py
   map_dm_nav/obs_transf/get_360_camera_client.py
   map_dm_nav/obs_transf/get_pano_multiple_camera_action.py
   map_dm_nav/obs_transf/get_pano_multiple_camera_client.py
