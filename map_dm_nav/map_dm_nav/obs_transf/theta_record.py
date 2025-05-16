@@ -64,17 +64,21 @@ def get_latest_image_file(directory):
     latest_file = max(jpg_files, key=os.path.getmtime)
     return latest_file
 
-def read_image(file_path):
+def read_image(file_path, reduction:int=1):
     # Read the image using cv2
     image = cv2.imread(file_path)
     if image is None:
         raise FileNotFoundError(f"Failed to read the image: {file_path}")
+    image = reduce_image(image, reduction=reduction)
     return image
+
+def reduce_image(image, reduction:int=1):
+    return cv2.resize(image, (int(image.shape[1]/reduction),int(image.shape[0]/reduction)))
 
 def show_reduced_image(image):
     print(image.shape)
     print(sys.getsizeof(image))
-    image = cv2.resize(image, (int(image.shape[1]/4),int(image.shape[0]/4)))
+    image = reduce_image(image, reduction=4)
     print(image.shape)
     print(sys.getsizeof(image))
     cv2.imshow('image window', image)

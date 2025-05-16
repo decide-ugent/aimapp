@@ -17,14 +17,14 @@ class Panorama360CamClient(Node):
         self.panorama_status = GoalStatus.STATUS_EXECUTING
         self.panorama_result = None                             
 
-    def turn_to_get_panorama(self, n_turn_stops:int=2):
+    def turn_to_get_panorama(self, n_turn_stops:int=2, n_actions:int=12):
         '''
         turn 360degree and take n_turn_stops image of the surrounding. 
         n_turn_stops must be >=0 to the number of direction the agent 
         can take, the agent is advised to take images in the directions it can go
         return result
         '''
-        panorama_future = self.send_panorama_goal(n_turn_stops)
+        panorama_future = self.send_panorama_goal(n_turn_stops, n_actions)
         rclpy.spin_until_future_complete(self, panorama_future)
         # print(panorama_future.__dict__)
         # print(highlevelnav.panorama_status)

@@ -3,6 +3,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
+from launch.actions import TimerAction
 
 def generate_launch_description():
     
@@ -14,23 +15,39 @@ def generate_launch_description():
 
     namespace = ""
     param_substitutions = {
-        'use_sim_time': 'False',
+        'use_sim_time': 'True',
         # 'yaml_filename': map_file
     }
 
     remappings = [
         ('/tf', 'tf'),
         ('/tf_static', 'tf_static'),
-        ('/odom', 'odom'),
+        ('/odom', '/odom'),
         ('scan', f'/{namespace}scan'),
         ('/cmd_vel', f'/{namespace}cmd_vel')
     ]
 
-    # nav2_yaml = RewrittenYaml(
-    #     source_file=nav2_yaml1,
-    #     root_key=namespace,
-    #     param_rewrites=param_substitutions,
-    #     convert_types=True
+    map_server = Node(
+        package='nav2_map_server',
+        executable='map_server',
+        name='map_server',
+        output='screen',
+        parameters=[{'use_sim_time': True}, 
+                    {'yaml_filename':map_file}],
+        remappings=remappings
+    )
+
+    # map_server = TimerAction(
+    # period=0.50,
+    # actions=[Node(
+    #      package='nav2_map_server',
+    #     executable='map_server',
+    #     name='map_server',
+    #     output='screen',
+    #     parameters=[{'use_sim_time': False}, 
+    #                 {'yaml_filename':map_file}],
+    #     remappings=remappings
+    # )]
     # )
     
     map_server = Node(

@@ -23,8 +23,8 @@ def generate_launch_description():
             executable='get_pano_multiple_camera_action.py',
             remappings=[
                 ('/agent/cmd_vel', '/cmd_vel'),
-                ('/agent/odom','/rosbot_xl_base_controller/odom'),
-                ('/agent/scan', '/scan'),
+                ('/agent/odom','/odometry/filtered'),
+                ('/agent/scan', '/scan_filtered'),
                 ('/agent/camera_front/image_raw', '/XXX/camera_front/image_raw'),
                 ('/agent/camera_right/image_raw', '/XXX/camera_right/image_raw'),
                 ('/agent/camera_left/image_raw', '/XXX/camera_left/image_raw'),
@@ -36,8 +36,8 @@ def generate_launch_description():
             namespace='agent',
             executable='get_360_camera_action.py',
             remappings=[
-                ('/agent/odom','/rosbot_xl_base_controller/odom'),
-                ('/agent/scan', '/scan'),
+                ('/agent/odom','/odometry/filtered'),
+                ('/agent/scan', '/scan_filtered'),
             ]
         )
     
@@ -48,8 +48,8 @@ def generate_launch_description():
             namespace='agent',
             remappings=[
                 ('/agent/cmd_vel','/cmd_vel'),
-                ('/agent/odom','/rosbot_xl_base_controller/odom'),
-                ('/agent/scan','/scan'),
+                ('/agent/odom','/odometry/filtered'),
+                ('/agent/scan','/scan_filtered'),
             ]
         )
 

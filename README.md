@@ -77,6 +77,9 @@ cd /home/YOUR_ROS_WP/src/ \
 Make sure the robot we are calling exist (we created a waffle robot with 3 cameras, to change the turtle version, go in spawn_turtle_launch.py)
 -> look at the `COPY` in the Dockerfile to copy paste the modifications done to the worlds and turtlebot3 in the appropriate locations (to have all our worlds + top view camera -optional-).
 
+If you are using Ricoh theta X:
+sudo apt install gphoto2
+sudo apt install libgphoto2-6
 
 ## Start the project
 Start the world

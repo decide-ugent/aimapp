@@ -177,8 +177,8 @@ def main(x,y, t='False'):
         initial_x = 0.0
         initial_y = 0.0
     
-    rclpy.spin_once(Nav2Client(initial_x,initial_y), timeout_sec=3)
-    nav_client = Nav2Client(initial_x,initial_y)
+    rclpy.spin_once(Nav2Client(), timeout_sec=3)
+    nav_client = Nav2Client()
 
     pose = [x,y]
     

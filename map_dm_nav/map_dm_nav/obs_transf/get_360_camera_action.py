@@ -7,6 +7,7 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
+from cv_bridge import CvBridge
 import threading
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from map_dm_nav_actions.action import Panorama   
@@ -21,6 +22,7 @@ class GeneratePanorama360Cam(Node):
         self.last_scan = None
         self.robot_odom = None
         self.tf_theta = None
+        self.img_bridge = CvBridge()
         self.images_dir = "/home/husarion/Pictures/theta_ricoh_x"
 
         self.execution_rate =  self.create_rate(1) #sec = 1/Hz
@@ -125,8 +127,8 @@ class GeneratePanorama360Cam(Node):
         kill_gphoto2_processes()
         capture_image(self.images_dir, iteration=0)
         latest_image_path = get_latest_image_file(self.images_dir)
-        # print(f"Latest image: {latest_image_path}")
-        images_compilation = list(read_image(latest_image_path))
+        self.get_logger().info(f"Latest image: {latest_image_path}")
+        images_compilation = [self.img_bridge.cv2_to_imgmsg(read_image(latest_image_path, reduction=4), encoding='rgb8')]
 
         while self.last_scan is None or self.robot_odom is None:
             self.execution_rate.sleep()
