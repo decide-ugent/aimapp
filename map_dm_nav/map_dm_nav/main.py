@@ -33,7 +33,7 @@ class HighLevelNav_ROSInterface(Node):
 
         #dist motion in m 
         self.influence_radius = 0.5
-        self.robot_dim = 0.33
+        self.robot_dim = 0.25
         #The lidar must say that there is X free dist behind position to consider it free #security
 
         self.panorama_client = Panorama360CamClient()

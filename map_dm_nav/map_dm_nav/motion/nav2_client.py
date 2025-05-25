@@ -41,7 +41,7 @@ class Nav2Client(Node):
         )   
         self.odom_sub = self.create_subscription(
             Odometry,
-            '/odom',
+            '/odometry/filtered',
             self.odom_callback,
             qos_profile=qos_profile
         )
