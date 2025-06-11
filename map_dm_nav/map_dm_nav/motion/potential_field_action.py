@@ -33,7 +33,7 @@ class PotentialFieldAction(Node):
         
         self.odom_sub = self.create_subscription(
             Odometry,
-            '/odometry/filtered',
+            'odometry/filtered',
             self.odom_callback,
             qos_profile=qos_policy
         )
@@ -183,6 +183,8 @@ class PotentialFieldAction(Node):
 
         x_r = 0.0000001
         y_r = 0.0000001
+        if self.V_repulsion is None:
+            self.get_logger().info("we got a scan")
 
         if self.tf_theta is None:
             theta_offset = 0.0
@@ -207,7 +209,7 @@ class PotentialFieldAction(Node):
                     #Projection of the vectors in the x , y coordinates
                     x_r -= Current_Q * np.cos(angle_difference) * self.obstacle_tolerance
                     y_r -= Current_Q * np.sin(angle_difference) * self.obstacle_tolerance
-                    self.get_logger().info("reulsion at absolute: %f, relative %f, dist %f, rep x %f, y %f" % (np.rad2deg(angle), np.rad2deg(angle_difference), round(scan[i], 2), round(Current_Q * np.cos(angle_difference)* self.obstacle_tolerance,4), round(Current_Q * np.sin(angle_difference)* self.obstacle_tolerance,4)))
+                    #self.get_logger().info("reulsion at absolute: %f, relative %f, dist %f, rep x %f, y %f" % (np.rad2deg(angle), np.rad2deg(angle_difference), round(scan[i], 2), round(Current_Q * np.cos(angle_difference)* self.obstacle_tolerance,4), round(Current_Q * np.sin(angle_difference)* self.obstacle_tolerance,4)))
         self.V_repulsion = [x_r, y_r]
 
         # angle_of_rep = np.arctan(self.V_repulsion[1]/self.V_repulsion[0])*180/np.pi

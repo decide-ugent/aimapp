@@ -239,6 +239,11 @@ class Ours_V5_RW(Agent):
         self.action = np.array([action])
         self.step_time()
     
+    def set_current_pose(self, pose_id):
+        self.current_pose = self.PoseMemory.id_to_pose(pose_id)
+        self.PoseMemory.reset_odom(self.current_pose)
+
+
     #==== GET METHODS
     def get_current_pose_id(self):
         ''' we do not want a negative pose od'''
@@ -362,6 +367,7 @@ class Ours_V5_RW(Agent):
 
         observations = kwargs.get('observations', None)
         next_possible_actions = kwargs.get('next_possible_actions', None)
+        save_action_memory = kwargs.get('save_action_memory', True)
 
         #If we are not inferring state at each state during the model update, we do it here
         if observations is not None and self.current_pose is None:
@@ -387,13 +393,14 @@ class Ours_V5_RW(Agent):
                      pose_id=initial_pose_id, observation=initial_observation, \
                      next_possible_actions=next_possible_actions, num_steps=num_steps, logging=None)
         
-        #NOTE: THIS CONSIDERONLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
-        self.q_pi = data['qpi'][0]
-        self.G = data['efe'][0]
+        if save_action_memory:
+            #NOTE: THIS CONSIDERONLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
+            self.q_pi = data['qpi'][0]
+            self.G = data['efe'][0]
 
-        #NOTE: THIS CONSIDER THAT WE APPLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
-        self.action = np.array([best_actions[0]])
-        self.step_time()
+            #NOTE: THIS CONSIDER THAT WE APPLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
+            self.action = np.array([best_actions[0]])
+            self.step_time()
         
         return best_actions[:num_steps], data
     
@@ -753,11 +760,23 @@ class Ours_V5_RW(Agent):
     def calculate_min_dist_to_next_node(self, state_step:int=1):
         return self.influence_radius * state_step + self.robot_dim/2#/3 to consider -a little- robot_dim when adding nodes.as_integer_ratio
     
-    def define_next_possible_actions(self, obstacle_dist_per_actions:list):
+    def define_next_possible_actions(self, obstacle_dist_per_actions:list, restrictive:bool=False, logs=None):
         min_dist = self.calculate_min_dist_to_next_node()
         
         n_actions = len(self.possible_actions) - ("STAY" in self.possible_actions.values())
         possible_actions = [i for i in range(n_actions) if obstacle_dist_per_actions[i] >= min_dist]
+        if restrictive:
+            possible_actions_2 = possible_actions[:]
+            for action in possible_actions_2:
+                next_pose, next_pose_id = self.determine_next_pose(action, min_dist_to_next_node=min_dist)
+                registered_pose = self.PoseMemory.id_to_pose(next_pose_id)
+                if logs:
+                    logs.info(f'next pose{next_pose}{next_pose_id}, with action{action}, but registered_pose{registered_pose}')
+                if registered_pose[0] != next_pose[0] or registered_pose[1] != next_pose[1] :
+                    possible_actions.remove(action)
+                    
+            
+    
 
         if "STAY" in self.possible_actions.values():
             possible_actions.append(n_actions)
@@ -1158,7 +1177,7 @@ class Ours_V5_RW(Agent):
                 # Negative LR
                 self.update_transitions_both_ways(reference_qs, adjacent_qs, action, direct_lr_pB=-direct_lr_pB, reverse_lr_pB=-reverse_lr_pB)
 
-    def update_transition_nodes(self, obstacle_dist_per_actions:list)-> None:
+    def update_transition_nodes(self, obstacle_dist_per_actions:list, logs=None)-> None:
         ''' 
         For each new pose observation, add a ghost state and update the estimated transition and observation for that ghost state.
         '''
@@ -1188,7 +1207,7 @@ class Ours_V5_RW(Agent):
         qs = self.get_belief_over_states()
         
         min_dist_to_next_node = self.calculate_min_dist_to_next_node()
-        
+
         for action_id in range(n_actions):
             #print('______________________________')
             hypo_qs = None
@@ -1220,8 +1239,11 @@ class Ours_V5_RW(Agent):
                     #5) ->7)  
                     if next_pose_id < 0 and pose_in_action_range:
                         next_pose_id = self.PoseMemory.pose_to_id(next_pose) 
+                        if logs:
+                            logs.info(f'creating new node in position {next_pose}, {next_pose_id}')
                         #print('creating new node in position', next_pose_id)
                         #7')
+
                         self.update_A_dim_given_pose(next_pose_id,null_proba=True)
                         self.update_B_dim_given_A()
                         self.update_C_dim()
@@ -1315,7 +1337,7 @@ class Ours_V5_RW(Agent):
             ## agent_state_mapping for TEST PURPOSES and visualisation
             self.update_agent_state_mapping(tuple(self.current_pose[:2]), observations, posterior[0])
             #4. update all nodes
-            self.update_transition_nodes(obstacle_dist_per_actions=obstacles_dist_per_action_range)
+            self.update_transition_nodes(obstacle_dist_per_actions=obstacles_dist_per_action_range, logs=None)
             #This is not mandatory, just a gain of time
             if 'STAY' in self.possible_actions.values():
                 stay_action = [key for key, value in self.possible_actions.items() if value == 'STAY'][0]

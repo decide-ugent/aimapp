@@ -13,7 +13,7 @@ from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.action.server import ServerGoalHandle
 from rclpy.executors import MultiThreadedExecutor
 class MoveStraightAction(Node):
-    def __init__(self, cmd_linear_max:float= 0.3, cmd_angular_max:float=0.2, 
+    def __init__(self, cmd_linear_max:float= 0.1, cmd_angular_max:float=0.2, 
                  angular_goal_tolerance:float = np.pi/10,
                  distance_goal_tolerance:float = 0.05):
         super(MoveStraightAction, self).__init__("MoveStraightAction")
@@ -32,14 +32,14 @@ class MoveStraightAction(Node):
         
         self.odom_sub = self.create_subscription(
             Odometry,
-            'odom',
+            'odometry/shifted',
             self.odom_callback,
             qos_profile=qos_policy
         )
 
         self.lidar_sub = self.create_subscription(
             LaserScan,
-            'scan',
+            'scan_filtered',
             self.lidar_callback,
             qos_profile=qos_policy
         )

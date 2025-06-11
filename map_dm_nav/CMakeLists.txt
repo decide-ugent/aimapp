@@ -50,10 +50,12 @@ install(PROGRAMS
   map_dm_nav/obs_transf/get_pano_multiple_camera_client.py
 
   map_dm_nav/main.py
+  map_dm_nav/action_process_no_motion.py
 
   simulation_tools/remove_turtlebot3_from_gazebo.py
   simulation_tools/reset_turtlebot3_odom.py
   simulation_tools/simulation_overview_data_save.py
+  simulation_tools/shift_husarion_odom.py
 
   map_dm_nav/obs_transf/save_cam_in_folder.py
   

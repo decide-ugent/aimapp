@@ -55,17 +55,19 @@ class MSClient(Node):
     
     def go_to_pose(self, goal_pose:list)-> bool:
         """ convert pose to Point, send it to action and wait for result (goal reached)"""
-        pose = Point(x=goal_pose[0], y=goal_pose[1])
+        pose = Point(x=float(goal_pose[0]), y=float(goal_pose[1]))
         future = self.send_goal(pose)
         rclpy.spin_until_future_complete(self, future)
 
         while self.motion_status != GoalStatus.STATUS_SUCCEEDED:
             rclpy.spin_once(self)
-
-        self.get_logger().info(
-                'Goal'+ str(goal_pose) +'reached with potential field')
+        if self.motion_result.goal_reached:
+            self.get_logger().info(
+                    'Goal'+ str(goal_pose) +'reached with potential field')
+        else:
+            self.get_logger().warn('Goal not reached')
         
-        return self.motion_result
+        return self.motion_result.goal_reached, self.motion_result.pose
         
 def main(x,y):
     rclpy.init()

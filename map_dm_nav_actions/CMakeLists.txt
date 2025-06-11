@@ -17,6 +17,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/Panorama.action"
   "action/PotentialField.action"
   "action/MoveStraight.action"
+  "action/AIFProcess.action"
   DEPENDENCIES geometry_msgs sensor_msgs builtin_interfaces action_msgs
 )
 
