@@ -23,15 +23,15 @@ os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 class HighLevelNav_ROSInterface(Node):
 
-    def __init__(self, load_model, goal_path):
+    def __init__(self, model_dir, goal_path):
         super().__init__('HighLevelNav_model')
         self.get_logger().info('HighLevelNav_model node has been started.')
         
-        self.load_model = load_model
+        self.model_dir = model_dir
         self.goal_path = goal_path
 
         #dist motion in m 
-        self.influence_radius = 2
+        self.influence_radius = 0.5
         self.robot_dim = 0.3
         #The lidar must say that there is X free dist behind position to consider it free #security
 
@@ -68,25 +68,26 @@ class HighLevelNav_ROSInterface(Node):
           We setup the model and incorporates the first ghost nodes
         """
         self.Views = ViewMemory(matching_threshold=0.7) #not in model because i can't pickle it
-                               
-        if self.load_model == 'None':
-            #TODO: UPDATE PANORAMA TO KNOW ACTION RANGE
+        
+        if self.model_dir == 'None':
             obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(n_actions)
             #create model
             self.model = Ours_V5_RW(num_obs=2, num_states=2, dim=2, \
                                     observations=[ob_id], \
-                                    n_actions=13, influence_radius=self.influence_radius,\
+                                    n_actions=n_actions, influence_radius=self.influence_radius,\
                                     robot_dim=self.robot_dim, lookahead_node_creation= 8)
             
+            #self.get_logger().info('Set actions:' + str(self.model.possible_actions))
             self.model.set_memory_views(self.Views.get_memory_views())
             self.model.update_transition_nodes(obstacle_dist_per_actions=obstacle_dist_per_actions)
             self.model.update_C_dim()
-           
+        #NOTE: THIS ASSUME WE RESTART FROM LAST POSITION. TO UPDATE TO RESET CURRENT POSE AND SEARCH WHEREABOUt
         else:
             #load model
-            self.model = pickle_load_model(self.load_model)
+            self.model = pickle_load_model(self.model_dir)
             self.Views.set_memory_views(self.model.get_memory_views())
-            #tfself.model.policy_len = 5
+            #self.model.policy_len = 5
+
             obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(n_actions)
             self.get_logger().info('start POSE: ' + str(self.model.PoseMemory.get_odom())+', '+str(self.model.current_pose))
 
@@ -322,10 +323,10 @@ def process_path(goal_path: str):
 
 def main(args=None):
     rclpy.init(args=args)
-    load_model = sys.argv[2] if len(sys.argv) > 2 else 'None'
+    model_dir = sys.argv[2] if len(sys.argv) > 2 else 'None'
     goal_path = sys.argv[4] if len(sys.argv) > 4 else 'None'
     
-    highlevelnav = HighLevelNav_ROSInterface(load_model, goal_path)
+    highlevelnav = HighLevelNav_ROSInterface(model_dir, goal_path)
    
     store_dir = create_save_data_dir()
     highlevelnav.store_dir = store_dir

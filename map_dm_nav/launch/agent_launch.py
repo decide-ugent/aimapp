@@ -8,7 +8,7 @@ from launch.substitutions import LaunchConfiguration
 DESKTOP_RESULTS_FOLDER=os.getcwd()
 
 
-load_model = LaunchConfiguration('model_dir', default='None')
+model_dir = LaunchConfiguration('model_dir', default='None')
 goal_path = LaunchConfiguration('goal_path', default='None')
 
 def find_folder_with_highest_number(directory_path):
@@ -37,7 +37,7 @@ def generate_launch_description():
             package='map_dm_nav',
             namespace='agent',
             executable='main.py',
-            arguments=['-load_model',load_model, '-goal_path',goal_path]
+            arguments=['-model_dir',model_dir, '-goal_path',goal_path]
         )
     panorama_action = Node(
             package='map_dm_nav',

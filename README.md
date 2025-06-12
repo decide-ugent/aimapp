@@ -106,10 +106,29 @@ ros2 launch map_dm_nav nav2_humble_launch.py
 ```
 
 **Start the agent**
+
+New exploration
+
 ```
 source install/setup.bash 
 ros2 launch map_dm_nav agent_launch.py
 ```
+
+Load a model
+```
+source install/setup.bash 
+ros2 launch map_dm_nav agent_launch.py model_dir:=path_to_model_directory
+```
+Note: model is expected to be called model.pkl 
+
+Load a goal
+```
+source install/setup.bash 
+ros2 launch map_dm_nav agent_launch.py goal_path:=path_to_goal_image
+```
+Note: model is expecting a jpg or png
+
+
 
 **Record position GT/believed_odom over time** (optional)
 ```
