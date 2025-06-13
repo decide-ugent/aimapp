@@ -753,12 +753,21 @@ class Ours_V5_RW(Agent):
     def calculate_min_dist_to_next_node(self, state_step:int=1):
         return self.influence_radius * state_step + self.robot_dim/2#/3 to consider -a little- robot_dim when adding nodes.as_integer_ratio
     
-    def define_next_possible_actions(self, obstacle_dist_per_actions:list):
+    def define_next_possible_actions(self, obstacle_dist_per_actions:list, restrictive:bool=False, logs=None):
         min_dist = self.calculate_min_dist_to_next_node()
         
         n_actions = len(self.possible_actions) - ("STAY" in self.possible_actions.values())
         possible_actions = [i for i in range(n_actions) if obstacle_dist_per_actions[i] >= min_dist]
-
+        if restrictive:
+            possible_actions_2 = possible_actions[:]
+            for action in possible_actions_2:
+                next_pose, next_pose_id = self.determine_next_pose(action, min_dist_to_next_node=min_dist)
+                registered_pose = self.PoseMemory.id_to_pose(next_pose_id)
+                if logs:
+                    logs.info(f'next pose{next_pose}{next_pose_id}, with action{action}, but registered_pose{registered_pose}')
+                if registered_pose[0] != next_pose[0] or registered_pose[1] != next_pose[1] :
+                    possible_actions.remove(action)
+                    
         if "STAY" in self.possible_actions.values():
             possible_actions.append(n_actions)
 

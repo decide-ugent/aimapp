@@ -206,7 +206,7 @@ class HighLevelNav_ROSInterface(Node):
         data = None
         goal_reached = False
         ongoing_try = 0
-        possible_actions = self.model.define_next_possible_actions(obstacle_dist_per_actions) #Not mandatory (just to speed up process), 
+        possible_actions = self.model.define_next_possible_actions(obstacle_dist_per_actions, restrictive=True) #Not mandatory (just to speed up process), 
         #could also be possible_actions = self.model.possible_actions.copy()
         possible_actions = {k: self.model.possible_actions[k] for k in possible_actions}
 

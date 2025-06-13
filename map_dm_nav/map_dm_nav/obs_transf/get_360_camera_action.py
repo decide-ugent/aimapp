@@ -6,6 +6,7 @@ from rclpy.executors import MultiThreadedExecutor
 from sensor_msgs.msg import Image, LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
+import tf2_ros
 import threading
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from map_dm_nav_actions.action import Panorama   
@@ -19,8 +20,9 @@ class GeneratePanorama360Cam(Node):
         super().__init__('generate_panorama_from_ricoh_camera')
         self.last_scan = None
         self.robot_odom = None
+        self.tf_theta = None
         self.images_dir = "/home/theta_ricoh_x/images"
-
+        self.tf_buffer = tf2_ros.Buffer()
         self.execution_rate =  self.create_rate(1) #sec = 1/Hz
 
         """************************************************************
@@ -107,8 +109,12 @@ class GeneratePanorama360Cam(Node):
         self.get_logger().info('goal_angles'+str(goal_handle.request))
         
         goal_angles = goal_handle.request.goal_angles
+        n_actions = goal_handle.request.n_actions
         feedback_msg = Panorama.Feedback()
         result = Panorama.Result()
+        orientation_compilation = []
+
+        actions_range = self.generate_action_range(n_actions)
 
         #Take a picture with camera (might take a few try) 
         #Then get the latest image in folder and save it in a list
@@ -120,8 +126,12 @@ class GeneratePanorama360Cam(Node):
 
         while self.last_scan or self.robot_odom is None :
             self.execution_rate.sleep()
+        
+        if self.tf_theta is None:
+            self.get_tf_transform()
 
-        orientation_compilation, laser_compilation = self.compute_scan_dist()
+
+        laser_compilation = self.compute_scan_dist(actions_range)
         self.get_logger().info(str(type(orientation_compilation)) + str(orientation_compilation))
         result.panorama = images_compilation
         result.pano_scan = laser_compilation
@@ -130,50 +140,69 @@ class GeneratePanorama360Cam(Node):
         return result
 
     
-    def compute_scan_dist(self) -> float:
+    def compute_scan_dist(self,actions_range) -> list:
         """This assumes a 360` lidar. Won't work with a forward lidar"""
         
         angle_min = self.last_scan.angle_min
         angle_max = self.last_scan.angle_max
         range_max = self.last_scan.range_max
-        step = self.last_scan.angle_increment
+        angle_increment = self.last_scan.angle_increment 
         scan = [range_max if (x == np.inf or np.isnan(x)) else x for x in self.last_scan.ranges]
-        scan_range  = len(scan)
-
-        angle_per_step = (angle_max + abs(angle_min)) / step #rad/step
-
-        #How many step left and right should we check lidar as well
-        step_range = int(np.round(0.1/angle_per_step /2))#rad so ~6deg 
-        desired_angles = np.linspace(0, 2*np.pi, 16, endpoint=False)
-        desired_angles = [float(angle) for angle in desired_angles]
-
-        angles = angle_min + np.arange(scan_range) * step
-        angles = np.mod(angles + self.robot_odom[2], 2 * np.pi) 
-        
-        
-        
+        #self.get_logger().info(f'length scan:{len(scan)}')
         lidar_dist = []
-        deg_angles = []
-        for desired_angle in desired_angles:
-            # Find the closest LIDAR measurement to the desired angle
-            idx = (np.abs(angles - desired_angle)).argmin()
-            obstacle_dist = 0
-            #this in two lines to consider negative values as idx
-            for i in range(idx-step_range, idx+step_range+1,1):
-                if i >= scan_range: 
-                    i = scan_range -i 
-                obstacle_dist+=scan[i]
-            obstacle_dist = obstacle_dist/(step_range*2+1)
-            print('desired_angle,',np.rad2deg(desired_angle),'idx',idx,'dist', obstacle_dist) 
-            lidar_dist.append(obstacle_dist)
-            deg_angles.append(np.rad2deg(desired_angle))
+        ob_dist_per_actions = [[] for a in range(len(actions_range))] 
+        if self.tf_theta is None:
+            theta_offset = 0.0
+        else:
+            theta_offset = self.tf_theta
+        for id, scan_info in enumerate(scan):
+            
+            curr_ray_angle_rad = \
+            (self.robot_odom[2] + theta_offset + \
+             angle_min + (id * angle_increment))
+            curr_ray_angle_deg = np.rad2deg(curr_ray_angle_rad) % 360 
+            #self.get_logger().info(f'curr_ray_angle_deg, ob_dist: {id} {round(curr_ray_angle_rad,1)} {round(curr_ray_angle_deg,1)} {round(scan_info,2)}')
+            action_id = next(key for key, value in actions_range.items() if curr_ray_angle_deg >= value[0] and curr_ray_angle_deg <= value[1] )
+            
+            ob_dist_per_actions[action_id].append(scan_info)
 
+        lidar_dist = [np.mean(ob_dist_per_action) for ob_dist_per_action in ob_dist_per_actions]
+        # for i in range(len(lidar_dist)):
+        #     if np.isnan(lidar_dist[i]):
+        #         self.get_logger().info('Incoming response composed of : %s data'  % (str(ob_dist_per_actions[i]))) 
 
-        self.get_logger().info('desired_angle: %s' % str(deg_angles))
-        self.get_logger().info('lidar_dist: %s' % str(lidar_dist))
-      
-        return desired_angles, lidar_dist
+        # self.get_logger().info(f'lidar_dist: {lidar_dist}')
+        return lidar_dist
+
+    def generate_action_range(self, n_actions):
+        zone_range_deg = round(360/n_actions,1)
+        n_actions_keys = np.arange(0, n_actions, 1)
+        zone_spacing_deg = np.arange(0, 361, zone_range_deg)
+        possible_actions = {}
+        for action_key in n_actions_keys:
+            possible_actions[action_key] = [round(zone_spacing_deg[action_key]), round(zone_spacing_deg[action_key+1]),]
     
+        return possible_actions
+
+
+    def get_tf_transform(self):
+        try:
+            tf = self.tf_buffer.lookup_transform(
+                'base_link',  # target frame
+                'laser',      # source frame
+                rclpy.time.Time())  # get the latest available
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+            self.get_logger().warn("TF from base_link to laser not available.")
+            return 
+        
+        euler_angles = ros_quaternion_to_euler(tf.transform.rotation)
+        theta = np.round(euler_angles[2], 4)
+        #I want theta between 0-4*pi, not 0-2pi/-2pi-0
+        if theta < 0:
+            theta += 2*np.pi
+        
+        self.tf_theta = theta
+        self.get_logger().info(f'tf theta: {theta}')
 
     """************************************************************
     ** ROS CALLBACKS
