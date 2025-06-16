@@ -47,10 +47,10 @@ class Node:
     def get_averaged_reward(self)->float:
         """Calculates the average reward accumulated through this node."""
         if self.N == 0:
-            return 0.0 # Avoid division by zero for unvisited nodes
+            return self.state_reward # Avoid division by zero for unvisited nodes
         return self.total_reward / self.N
 
-    def get_ucb1_score(self, c_param:float=1.41)->float:
+    def get_ucb1_score(self, c_param:float=1.41,use_utility:bool=True,use_states_info_gain:bool=True)->float:
         """
         Calculates the UCB1 score for this node.
         Balances exploitation (average reward) and exploration (visit count).
@@ -76,7 +76,12 @@ class Node:
 
         # Add intrinsic state reward to bias selection towards immediately rewarding states
         # Note: Depending on the scale of state_reward vs rollout_reward, this might need tuning.
-        return exploitation_term + exploration_term #+ self.state_reward
+        reward = 0
+        if use_utility:
+            reward += exploitation_term
+        if use_states_info_gain:
+            reward += exploration_term
+        return reward #+ self.state_reward
 
     def is_fully_expanded(self)->bool:
         """Checks if we verified possible actions from this node leading to a child node. This suppose we have No isolated node"""
@@ -86,15 +91,15 @@ class Node:
         """Checks if the node has any child nodes."""
         return len(self.childs) > 0
     
-    def select_best_child_UCB(self, c_param:float=1.41)->object:
+    def select_best_child_UCB(self, c_param:float=1.41,use_utility:bool=True, use_info_gain:bool=True,parent_list=[])->object:
         """Selects the child with the highest UCB1 score."""
         best_score = -float('inf')
         best_child = None
         for action, child in self.childs.items():
-            score = child.get_ucb1_score(c_param)
-            logging.debug(f"  Child {child.id} (Action {action}) UCB1: {score:.2f}")
-            
-            if score > best_score:
+            score = child.get_ucb1_score(c_param,use_utility, use_info_gain)
+            # logging.info(f"  Child {child.id} (Action {action}) UCB1: {score:.2f}")
+            scores.append(score)
+            if score > best_score and child.id not in parent_list:
                 best_score = score
                 best_child = child
         #logging.debug(f"Node {self.id}: Selected child {best_child.id if best_child else 'None'} with score {best_score:.2f}")
@@ -177,7 +182,7 @@ class MCTS_Model_Interface:
             #the lowest (<0), the more interesting
             logging.debug(f"  Utility Term exp ob: {str(expected_observation_qo_pi)}")
             utility = self.model.infer_utility_term(expected_observation_qo_pi)
-            G -= utility
+            G += utility 
             logging.debug(f"  Utility Term: {utility:.4f}")
         if self.model.use_param_info_gain: #not good in asociation with the other terms
             #the highest (>0), the less interesting
@@ -194,6 +199,10 @@ class MCTS_Model_Interface:
         q_pi, best_action_id = self.model.infer_best_action_given_actions(action_values, available_actions,action_selection, alpha)
         return q_pi, best_action_id
 
+    def get_utility_term(self):
+        return self.model.use_utility
+    def get_use_states_info_gain_term(self):
+        return self.model.use_states_info_gain
 # --- MCTS Algorithm Class ---
 class MCTS:
     """
@@ -224,12 +233,12 @@ class MCTS:
             #"bayesian_surprise": utils.bayesian_surprise(posterior[0].copy(), prior),
             }
         for i in range(num_steps):
-            best_action, data = self.plan(current_node, self.num_simulation, self.max_rollout_depth, data)
+            best_action, data = self.plan(current_node, self.num_simulation, self.max_rollout_depth, data, logging=logging)
             best_actions.append(best_action)
             if num_steps>1 and best_action in current_node.childs:
                 next_node = current_node.childs[best_action]
                 if logging:
-                    logging.info(f"Executing action {best_action} -> Transitioning to Node {next_node.id}")
+                    logging.info(f"MCTS:Executing action {best_action} -> Transitioning to Node {next_node.id}")
 
                 # IMPORTANT: Detach the chosen next state from its parent (the previous state).
                 # This makes the chosen next state the new root for the *next* planning step
@@ -239,21 +248,29 @@ class MCTS:
 
         return best_actions, data
 
-    def _select_node(self, root_node:object)->object:
+    def _select_node(self, root_node:object, logging=None)->object:
         """Phase 1: Selection - Traverse the tree using UCB1 until a leaf node is reached."""
         current = root_node
         # logging.debug(f"--- Selection Phase Start (Root: {root_node.id}) ---")
         while current.is_fully_expanded():
-            logging.debug(f"  Selected Node {current.id}")
+            if logging:
+                logging.debug(f"  Selected Node {current.id}")
             # logging.debug(f"Selecting from Node {current.id} (N={current.N}, TR={current.total_reward:.3f})")
             #USING UCB
-            current = current.select_best_child_UCB(self.c_param)
+            #self.parent_list.extend([child.id for child in current.childs.values()])
+            self.parent_list.append(current.id)
+            next = current.select_best_child_UCB(self.c_param, self.model_interface.get_utility_term(), self.model_interface.get_use_states_info_gain_term, self.parent_list)
+            if next is not None:
+                current = next
+            else:
+                break
             #USING AIF
             # children_G = current.all_children_AIF()
             # q_pi, best_action = self.model_interface.infer_policy_over_actions(children_G, current.possible_actions, action_selection='stochastic', alpha=1.0)
             # current = current.childs[best_action]
-
-        logging.info(f"--- Selection Phase End (Selected Node: {current.id}) ---")
+        if logging:
+            logging.info(f"--- Selection Phase End (Selected Node: {current.id}) ---")
+        self.parent_list.append(current.id)
         return current
 
     def _expand_node_in_all_possible_direction(self, node:object)->object:
@@ -309,7 +326,7 @@ class MCTS:
             #     parent.total_reward = parent.total_reward + child_reward_G
 
             node.childs[action] = child_node
-            logging.debug(f"from node {node.id} -> Child Node {child_node.id}, expanding with action {action}(Initial G={child_reward_G:.3f})")
+            logging.debug(f"from node {node.id} -> Child Node {child_node.id}, expanding with action {action}(Initial G={child_node.state_reward:.3f})")
             # logging.debug(f"--- Expansion Phase End (Expanded Node: {child_node.id}) ---")
         return node # Return the newly expanded node
 
@@ -408,6 +425,57 @@ class MCTS:
         # logging.debug(f"--- Rollout Phase End (Node: {start_node.id}, Total Rollout G: {cumulative_G:.3f}) ---")
         return cumulative_G / depth
     
+
+    def _minimal_rollout(self, start_node:object,max_depth:int)->float:
+        """
+        Phase 3: Simulation (Rollout) - Simulate a trajectory from the start_node
+        using a default policy (e.g., random actions) and return the cumulative reward (G).
+        """
+        # logging.debug(f"--- Rollout Phase Start (Node: {start_node.id}, Max Depth: {max_depth}) ---")
+        current_sim_qs = start_node.state_qs
+        current_sim_pose_id = start_node.pose_id
+        current_node = start_node
+        best_state_reward = -1000
+
+        #for depth in range(max_depth):
+        # 1. Get possible actions from the *current simulated pose*
+        if current_node and current_node.is_fully_expanded():
+            all_possible_actions = current_node.possible_actions
+        else:
+            all_possible_actions = self.model_interface.get_possible_actions()
+        
+        if len(all_possible_actions)==0:
+            # logging.debug(f"  Rollout Depth {depth}: No actions possible from pose {current_sim_pose_id}. Stopping.")
+            return 0 # Dead end in simulation
+        # 2. Review ALL the actions
+        for action in all_possible_actions:
+                # 3. Simulate the transition
+                next_sim_pose_id = self.model_interface.get_next_node_pose_id(current_sim_pose_id, action)
+                if next_sim_pose_id < 0:
+                        # logging.debug(f"  Rollout Depth {depth}: Action {action} from pose {current_sim_pose_id} leads to invalid state. Stopping.")
+                        continue # Invalid move in simulation
+
+                next_sim_qs = self.model_interface.get_next_state_belief(current_sim_qs, action)[0]
+                sim_qo_pi = self.model_interface.get_expected_observation(next_sim_qs)
+
+                # 4. Calculate reward (G) for this simulated step
+                step_G = self.model_interface.calculate_expected_free_energy(next_sim_qs, sim_qo_pi, current_sim_qs, action)
+                if step_G > best_state_reward:
+                    best_state_reward = step_G
+                logging.debug(f"  Rollout node {start_node.id}: Action {action}, NextPose {next_sim_pose_id}, StepG={step_G:.3f}")
+
+
+                # 6. If a node exist for that action, retrieve it to get appropriate next actions
+                if current_node and current_node.has_children_nodes():
+                    current_node = current_node.childs.get(action,None)
+                else:
+                    current_node = None
+        #SECURITY (should be useless)
+        if best_state_reward == -1000:
+            best_state_reward = 0
+        # logging.debug(f"--- Rollout Phase End (Node: {start_node.id}, Total Rollout G: {cumulative_G:.3f}) ---")
+        return best_state_reward
+    
     def _backpropagate(self, node:object, reward:float)-> None:
         """Phase 4: Backpropagation - Update visit counts and total rewards up the tree."""
         # logging.debug(f"--- Backpropagation Start (Node: {node.id}, Reward: {reward:.3f}) ---")
@@ -419,12 +487,12 @@ class MCTS:
             current = current.parent
         # logging.debug(f"--- Backpropagation End ---")
 
-    def run_simulation(self, root_node, max_rollout_depth):
+    def run_simulation(self, root_node, max_rollout_depth, logging=None):
         """Runs a single iteration of the MCTS algorithm (Select, Expand, Simulate, Backpropagate)."""
         # logging.debug(f"=== Starting MCTS Simulation ===")
 
         # Phase 1: Selection
-        selected_node = self._select_node(root_node)
+        selected_node = self._select_node(root_node, logging=logging)
 
         # Phase 2: Expansion
         # If the selected node is not terminal and not fully expanded, expand it.
@@ -442,7 +510,8 @@ class MCTS:
 
         # Phase 3: Simulation (Rollout)
         # Start rollout from the newly expanded node (or the selected node if expansion wasn't possible/needed)
-        reward = self._rollout(selected_node, max_rollout_depth)
+        reward = self._minimal_rollout(selected_node,max_rollout_depth)
+        #reward = self._rollout(selected_node, max_rollout_depth)
         # Add the immediate state reward (G) of the node where the rollout started
         # This connects the immediate EFE gain with the future expected gains from the rollout
         reward += selected_node.state_reward
@@ -450,17 +519,21 @@ class MCTS:
         # Phase 4: Backpropagation
         self._backpropagate(selected_node, reward)
         
-        children_info = [('child id',c.id,'N',c.N,'T', round(c.total_reward,2),'efe_av', round(c.get_averaged_reward(),2)) for a,c in root_node.childs.items()]
+        children_info = [('a', a, 'child id',c.id,'N',c.N,'T', round(c.total_reward,2),'efe_av', round(c.get_averaged_reward(),2)) for a,c in root_node.childs.items()]
         logging.info(f"Root node children stats: {children_info}")
         # logging.debug(f"=== Finished MCTS Simulation ===")
 
-    def plan(self, root_node:object, num_simulations:int, max_rollout_depth:int, data:dict=None)-> int: #dict
+    def plan(self, root_node:object, num_simulations:int, max_rollout_depth:int, data:dict=None, logging=None)-> int: #dict
         """Runs the MCTS planning process for a given number of simulations."""
-        logging.info(f"Starting MCTS planning from root node {root_node.id} for {num_simulations} simulations.")
+        if logging:
+            logging.info(f"Starting MCTS planning from root node {root_node.id} for {num_simulations} simulations.")
+
+        self.tree_table = {}
         for i in range(num_simulations):
             # print()
-            logging.info(f"--- Simulation {i+1}/{num_simulations} ---")
-            self.run_simulation(root_node, max_rollout_depth)
+            if logging:
+                logging.info(f"--- Simulation {i+1}/{num_simulations} ---")
+            self.run_simulation(root_node, max_rollout_depth, logging)
 
         # After simulations, determine the best action from the root
         best_action, q_pi_actions_values = self.get_best_action(root_node)
@@ -487,6 +560,8 @@ class MCTS:
         child_info = []
         for action, child in root_node.childs.items():
             avg_reward = child.get_averaged_reward()
+            if child.id < 0 : #We don't care about uncharted state, thus we artificially decrease their attractiveness
+                avg_reward = 0
             action_values.append(avg_reward)
             available_actions.append(action)
             child_info.append(f"Action {action}: AvgR={avg_reward:.3f}, N={child.N}")
@@ -518,21 +593,39 @@ class MCTS:
 def plot_mcts_tree(root_node):
     """Visualises the Monte Carlo Tree Search (MCTS) tree."""
     G = nx.DiGraph()  # Directed Graph
+    dico = {}
+    visited = set()  # To avoid infinite recursion
 
     # Recursively extract tree structure
     def add_nodes_edges(node, parent=None, action=None):
-        node_label = f"ID: {node.id}\nR: {round(node.state_reward, 2)}"
-        G.add_node(node.id, label=node_label, reward=node.state_reward)
+        if node.id in visited:
+            if parent is not None:
+                G.add_edge(parent.id, node.id, action=int(action))
+            return  # Already added and traversed — skip further traversal
+
+        visited.add(node.id)
+
+        # Aggregate or update visit count
+        if node.id not in dico:
+            dico[node.id] = node.N
+        else:
+            dico[node.id] += node.N
+
+        # Label for display
+        node_label = f"ID: {node.id}\nN: {round(dico[node.id], 2)},\nR: {round(node.state_reward, 2)}"
+        G.add_node(node.id, label=node_label, reward=dico[node.id])
 
         if parent is not None:
-            G.add_edge(parent.id, node.id, action=int(action))  # Add edge with action label
-            #G.add_edge(node.id, parent.id, action=rev_action(action))  
-        # print('node has children?', node.has_children_nodes())
+            G.add_edge(parent.id, node.id, action=int(action))
+
         if node.has_children_nodes():
             for action, child_node in node.childs.items():
-                # print('child id', child_node.id)
                 add_nodes_edges(child_node, node, action)
+
     add_nodes_edges(root_node)
+
+    dico = sorted(dico.items(), key=lambda x: x[1])
+    logging.info(f"max visits:{dico}, len dict:{len(dico)}")
 
     pos = nx.kamada_kawai_layout(G)
     # Scale positions to increase spacing
@@ -542,16 +635,11 @@ def plot_mcts_tree(root_node):
     rewards = [G.nodes[n]['reward'] for n in G.nodes]
     min_reward = min(rewards) if rewards else 0
     max_reward = max(rewards) if rewards else 1
-    node_colors = [(r - min_reward) / (max_reward - min_reward + 1e-6) for r in rewards] # Normalize 0-1
-
-    # Node sizes based on visit count (log scale might be better)
-    # sizes = [G.nodes[n]['N'] for n in G.nodes]
-    # #node_sizes = [200 + s * 10 for s in sizes] # Linear scaling
-    # node_sizes = [200 + 200 * math.log(s + 1) for s in sizes] # Log scaling
+    node_colors = [(r - min_reward) / (max_reward - min_reward + 1e-6) for r in rewards]
 
     plt.figure(figsize=(12, 8))
     nx.draw(G, pos, with_labels=True, labels=nx.get_node_attributes(G, 'label'),
-            node_color=node_colors, cmap=plt.cm.cool,node_size=1500,
+            node_color=node_colors, cmap=plt.cm.cool, node_size=1500,
             font_size=8, font_weight='bold', edgecolors="black", alpha=0.9)
 
     # Draw edge labels (actions)
@@ -592,25 +680,31 @@ if __name__ == "__main__":
     if underlying_model is None:
         exit() # Stop if model loading failed
 
-    # Create the interface for the MCTS algorithm
-    model_interface = MCTS_Model_Interface(underlying_model)
-
+    #39 - 1step state33, 35 - 2 steps state 60, 30- 3steps state3, 7- 5 step - state24
+    #GOAL TESTS
+    underlying_model.goal_oriented_navigation([35,-1], pref_weight = 10.0)
+    underlying_model.use_utility = True
+    # underlying_model.use_states_info_gain = True
+    obstacle_dist_per_actions = [4.507089614868164, 4.789198398590088, 4.365529537200928, 2.7395713329315186, 2.3621973991394043, 1.7037241458892822, 1.7129298448562622, 2.037290573120117, 1.3319873809814453, 6.884044647216797, 5.011831283569336, 4.510308742523193]
+    possible_actions = underlying_model.define_next_possible_actions(obstacle_dist_per_actions, restrictive=True)
+    
     # Create the MCTS algorithm instance
-    mcts = MCTS(model_interface, c_param=C_PARAM) # Adjust c_param if needed
+    mcts = MCTS(underlying_model, c_param=C_PARAM, num_simulation=NUM_SIMULATIONS) # Adjust c_param if needed
 
     # Get action names for logging
     map_action_names = underlying_model.get_possible_actions() # Assuming pose 0 exists
 
     # Define the initial state
-    initial_pose_id = 0 # Or get from your model/environment
+    initial_pose_id = 53 # Or get from your model/environment
     initial_belief_qs = underlying_model.get_belief_over_states() # Get initial belief
-    initial_observation = model_interface.get_expected_observation(initial_belief_qs)
+    initial_observation = underlying_model.get_expected_observation(initial_belief_qs)
     # Root node has no parent and no action leading to it
     root_node = Node(state_qs=initial_belief_qs,
                      pose_id=initial_pose_id,
                      parent=None,
                      action_index=None,
-                     observation=initial_observation)
+                     observation=initial_observation, 
+                     possible_actions=possible_actions)
 
     logging.info(f"===== Initial Root Node ID: {root_node.id} =====")
 
@@ -618,13 +712,21 @@ if __name__ == "__main__":
     current_node = root_node
     start_time = datetime.datetime.now()
 
+    data = {"qs": initial_belief_qs[0],
+            "qpi": [],
+            "efe": [],
+            "info_gain": [],
+            "utility": [],
+            #"bayesian_surprise": utils.bayesian_surprise(posterior[0].copy(), prior),
+            }
+
     for i in range(NUM_STEPS):
         logging.info(f"\n===== Planning Step {i+1}/{NUM_STEPS} =====")
         logging.info(f"Current State (Node ID): {current_node.id}")
 
         # Plan the next action using MCTS
         # The root of the search is the current state node
-        best_action, data = mcts.plan(current_node, NUM_SIMULATIONS, MAX_ROLLOUT_DEPTH)
+        best_action, data = mcts.plan(current_node, NUM_SIMULATIONS, MAX_ROLLOUT_DEPTH, logging=logging, data=data)
 
         if best_action is None:
             logging.error("MCTS failed to find a best action. Stopping simulation.")
@@ -638,7 +740,7 @@ if __name__ == "__main__":
             child_info_list = []
             for action_id, child in current_node.childs.items():
                  a_name = map_action_names.get(action_id, "?")
-                 child_info_list.append(f"  Action {action_id} ({a_name}): AvgR={child.get_averaged_reward():.3f}, N={child.N}")
+                 child_info_list.append(f"  Action {action_id} ({a_name}): state={child.id} AvgR={child.get_averaged_reward():.3f}, N={child.N}")
             logging.info("Root Node Children Details:\n" + "\n".join(child_info_list))
             print('Action visit counts:', [current_node.childs[action_id].N for action_id in current_node.childs])
         else:

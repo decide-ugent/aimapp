@@ -326,6 +326,8 @@ def calc_expected_utility(qo_pi, C):
         for modality in range(num_modalities):
 
             lnC = spm_log_single(C_prob[modality][:, t])
+            if len(set(lnC)) == 1: #If no preference, silence noise from unused modalities
+                lnC = np.zeros_like(lnC)
             expected_util += qo_pi[t][modality].dot(lnC)
 
     return expected_util

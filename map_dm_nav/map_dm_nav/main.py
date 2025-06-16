@@ -261,7 +261,7 @@ class HighLevelNav_ROSInterface(Node):
 
     def reach_position(self,goal_pose:list): #-> tuple([Bool,Odometry])
         goal_reached, pose= self.motion_client.go_to_pose(goal_pose)
-        if not goal_reached: 
+        if not goal_reached and pose is not None: 
             #if we are one third near the goal, let's say it's ok
             if np.allclose(pose[:2], goal_pose[:2], atol=self.influence_radius/3):
                 goal_reached = True

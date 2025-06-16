@@ -219,9 +219,9 @@ local_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
-          raytrace_max_range: 3.0
+          raytrace_max_range: 12.0
           raytrace_min_range: 0.02
-          obstacle_max_range: 3.0
+          obstacle_max_range: 8.0
           obstacle_min_range: 0.0
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
@@ -250,9 +250,9 @@ global_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
-          raytrace_max_range: 3.0
+          raytrace_max_range: 12.0
           raytrace_min_range: 0.02
-          obstacle_max_range: 3.0
+          obstacle_max_range: 8.0
           obstacle_min_range: 0.0
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
