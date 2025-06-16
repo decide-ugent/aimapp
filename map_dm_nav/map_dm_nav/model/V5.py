@@ -362,6 +362,7 @@ class Ours_V5_RW(Agent):
 
         observations = kwargs.get('observations', None)
         next_possible_actions = kwargs.get('next_possible_actions', None)
+        plot_MCTS_tree = kwargs.get('plot_MCTS_tree', False)
 
         #If we are not inferring state at each state during the model update, we do it here
         if observations is not None and self.current_pose is None:
@@ -385,7 +386,7 @@ class Ours_V5_RW(Agent):
 
         best_actions, data = mcts.start_mcts(state_qs=initial_belief_qs,
                      pose_id=initial_pose_id, observation=initial_observation, \
-                     next_possible_actions=next_possible_actions, num_steps=num_steps, logging=None)
+                     next_possible_actions=next_possible_actions, num_steps=num_steps, logging=logging, plot=plot_MCTS_tree)
         
         #NOTE: THIS CONSIDERONLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
         self.q_pi = data['qpi'][0]

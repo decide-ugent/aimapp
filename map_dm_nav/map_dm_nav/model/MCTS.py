@@ -3,6 +3,8 @@ import numpy as np
 import random
 import logging
 import math
+import copy
+
 
 #TEST IMPORTS
 # import datetime
@@ -98,7 +100,7 @@ class Node:
         for action, child in self.childs.items():
             score = child.get_ucb1_score(c_param,use_utility, use_info_gain)
             # logging.info(f"  Child {child.id} (Action {action}) UCB1: {score:.2f}")
-            scores.append(score)
+            # scores.append(score)
             if score > best_score and child.id not in parent_list:
                 best_score = score
                 best_child = child
@@ -216,7 +218,7 @@ class MCTS:
         self.max_rollout_depth = max_rollout_depth # Maximum depth for the simulation (rollout) phase
         logging.info(f"MCTS initialized with exploration parameter c={c_param}, num_simus={num_simulation}, max_depth={max_rollout_depth}, policy_alpha={AIF_model.alpha},  action_selection={AIF_model.action_selection}")
 
-    def start_mcts(self,state_qs:np.ndarray, pose_id:int, observation:np.ndarray, next_possible_actions:list= None, num_steps:int=1, logging=None)-> list:
+    def start_mcts(self,state_qs:np.ndarray, pose_id:int, observation:np.ndarray, next_possible_actions:list= None, num_steps:int=1, logging=None, plot=False)-> list:
         current_node = Node(state_qs=state_qs,
                 pose_id=pose_id,
                 parent=None,
@@ -245,12 +247,18 @@ class MCTS:
                 # and allows the old parts of the tree to be garbage collected.
                 next_node.detach_parent()
                 current_node = next_node # Update the current state
-
+        if plot:
+            plot_node = copy.deepcopy(current_node)
+            data['plot_MCTS_tree'] = plot_node
+        if logging:
+            logging.info(f"MCTS:Executing actions {best_actions} -> Transitioning up to Node {current_node.childs[best_action].id}")
+           
         return best_actions, data
 
     def _select_node(self, root_node:object, logging=None)->object:
         """Phase 1: Selection - Traverse the tree using UCB1 until a leaf node is reached."""
         current = root_node
+        self.parent_list = []
         # logging.debug(f"--- Selection Phase Start (Root: {root_node.id}) ---")
         while current.is_fully_expanded():
             if logging:
@@ -288,7 +296,7 @@ class MCTS:
             next_pose_id = self.model_interface.get_next_node_pose_id(node.pose_id, action)
             #=== check if new  (redundant)===#
             if action not in node.possible_actions:
-                if next_pose_id < 0: #no known or valid next node
+                if next_pose_id < 0 or next_pose_id in self.parent_list : #no known or valid next node
                     continue
                 node.possible_actions.append(action)
             
@@ -539,7 +547,7 @@ class MCTS:
         best_action, q_pi_actions_values = self.get_best_action(root_node)
         data['qpi'].append(q_pi_actions_values[0])
         data['efe'].append(q_pi_actions_values[1])
-        logging.info(f"MCTS planning finished. Best action: {best_action}")
+
         return best_action, data
 
     def get_best_action(self, root_node:object)->int:
