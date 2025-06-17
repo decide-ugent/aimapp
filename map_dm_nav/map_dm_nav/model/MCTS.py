@@ -7,14 +7,14 @@ import copy
 
 
 #TEST IMPORTS
-import datetime
-from pathlib import Path
-import pickle
-import matplotlib.pyplot as plt
-import networkx as nx
+# import datetime
+# from pathlib import Path
+# import pickle
+# import matplotlib.pyplot as plt
+# import networkx as nx
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+#logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Node Class ---
 class Node:
@@ -126,7 +126,6 @@ class Node:
         del self.parent
         self.parent = None
 
-
 # --- Model Interface Class ---
 class MCTS_Model_Interface:
     """
@@ -178,6 +177,7 @@ class MCTS_Model_Interface:
         G = Utility + Information Gain
         """
         G = 0.0
+        H = 0.0
         logging.debug(f"action:{action}, next_belief_qs: {str(next_belief_qs)}")
         if self.model.use_states_info_gain:
             #the highest (>0), the more interesting
@@ -191,6 +191,10 @@ class MCTS_Model_Interface:
             utility = self.model.infer_utility_term(expected_observation_qo_pi)
             G += utility 
             logging.debug(f"  Utility Term: {utility:.4f}")
+
+        if self.model.use_inductive_inference:
+           H -= self.model.infer_inductive_preference(current_qs, next_belief_qs)
+           logging.debug(f" Inductive Inference: {H:.4f}")
         if self.model.use_param_info_gain: #not good in asociation with the other terms
             #the highest (>0), the less interesting
             param_info_gain = self.model.infer_param_info_gain([next_belief_qs],expected_observation_qo_pi, current_qs, action)[0]/100
@@ -198,7 +202,7 @@ class MCTS_Model_Interface:
             logging.debug(f"  Param info gain Term: {param_info_gain:.4f}")
 
         logging.debug(f"  Calculated G: {G:.4f}")
-        return G
+        return G, H
 
     def infer_policy_over_actions(self, action_values:list, available_actions:list, action_selection:str=None, alpha:float=None):
         """Infers a probability distribution (policy) over actions based on their values (e.g., EFE)."""
@@ -273,6 +277,7 @@ class MCTS:
             #self.parent_list.extend([child.id for child in current.childs.values()])
             self.parent_list.append(current.id)
             next = current.select_best_child_UCB(self.c_param, self.model_interface.get_utility_term(), self.model_interface.get_use_states_info_gain_term, self.parent_list)
+            
             if next is not None:
                 current = next
             else:
@@ -308,7 +313,7 @@ class MCTS:
                 if next_pose_id < 0 or next_pose_id in self.parent_list[:-1] : #no known or next pose looping back in path
                     continue
                 node.possible_actions.append(action)
-            
+        
             #=== action leading to a node, saving believed qs and qo ===#
             # print('node.state_qs', node.state_qs[0].round(4), action)
             next_state_qs = self.model_interface.get_next_state_belief(node.state_qs, action=action)[0]
@@ -319,31 +324,38 @@ class MCTS:
                 del node.childs[action]
             # Calculate the immediate reward (Expected Free Energy) for this transition
             # Note: This G is associated with *reaching* the new state.
-            child_reward_G = self.model_interface.calculate_expected_free_energy(next_state_qs, qo_pi, node.state_qs, action)
+            child_reward_G, child_H = self.model_interface.calculate_expected_free_energy(next_state_qs, qo_pi, node.state_qs, action)
+            child_reward = child_reward_G+ child_H 
+            if next_pose_id in self.tree_table:
+                child_node = self.tree_table[next_pose_id]
+                if child_node.state_reward < child_reward:
+                    child_node.state_reward = child_reward
+            else:
+                # Create the new child node
+                child_node = Node(
+                    state_qs=next_state_qs,
+                    pose_id=next_pose_id,
+                    parent=node,
+                    action_index=action,
+                    observation=qo_pi,
+                    initial_reward= child_reward 
+                    # Rollout will determine total_reward
+                    # possible_actions will be determined when the child is expanded later
+                )
 
-            # Create the new child node
-            child_node = Node(
-                state_qs=next_state_qs,
-                pose_id=next_pose_id,
-                parent=node,
-                action_index=action,
-                observation=qo_pi,
-                initial_reward= child_reward_G 
-                # Rollout will determine total_reward
-                # possible_actions will be determined when the child is expanded later
-            )
+                self.tree_table[child_node.id] = child_node
 
-            #To get a headstart (not necessary)
-            # child_node.N +=1
-            # child_node.total_reward = child_node.state_reward 
-            # parent = child_node
-            # while parent.parent:
-            #     parent = parent.parent
-            #     parent.N += 1
-            #     parent.total_reward = parent.total_reward + child_reward_G
+                #To get a headstart (not necessary)
+                # child_node.N +=1
+                # child_node.total_reward = child_node.state_reward 
+                # parent = child_node
+                # while parent.parent:
+                #     parent = parent.parent
+                #     parent.N += 1
+                #     parent.total_reward = parent.total_reward + child_reward_G
 
             node.childs[action] = child_node
-            logging.debug(f"from node {node.id} -> Child Node {child_node.id}, expanding with action {action}(Initial G={child_node.state_reward:.3f})")
+            logging.info(f"from node {node.id} -> Child Node {child_node.id}, expanding with action {action}(Initial full={child_node.state_reward:.3f}, G={child_reward_G:.3f} H={child_H:.3f})")
             # logging.debug(f"--- Expansion Phase End (Expanded Node: {child_node.id}) ---")
         return node # Return the newly expanded node
 
@@ -424,9 +436,9 @@ class MCTS:
             sim_qo_pi = self.model_interface.get_expected_observation(next_sim_qs)
 
             # 4. Calculate reward (G) for this simulated step
-            step_G = self.model_interface.calculate_expected_free_energy(next_sim_qs, sim_qo_pi, current_sim_qs, action)
-            cumulative_G += step_G
-            logging.debug(f"  Rollout Depth {depth}: Action {action}, NextPose {next_sim_pose_id}, StepG={step_G:.3f}, CumulG={cumulative_G:.3f}")
+            step_G, step_H = self.model_interface.calculate_expected_free_energy(next_sim_qs, sim_qo_pi, current_sim_qs, action)
+            cumulative_G += step_G + step_H
+            logging.debug(f"  Rollout Depth {depth}: Action {action}, NextPose {next_sim_pose_id}, StepG={step_G:.3f}, StepH={step_H:.3f}, CumulG={cumulative_G:.3f}")
 
             # 5. Update simulated state
             current_sim_qs = next_sim_qs
@@ -476,10 +488,11 @@ class MCTS:
                 sim_qo_pi = self.model_interface.get_expected_observation(next_sim_qs)
 
                 # 4. Calculate reward (G) for this simulated step
-                step_G = self.model_interface.calculate_expected_free_energy(next_sim_qs, sim_qo_pi, current_sim_qs, action)
-                if step_G > best_state_reward:
-                    best_state_reward = step_G
-                logging.debug(f"  Rollout node {start_node.id}: Action {action}, NextPose {next_sim_pose_id}, StepG={step_G:.3f}")
+                step_G, step_H = self.model_interface.calculate_expected_free_energy(next_sim_qs, sim_qo_pi, current_sim_qs, action)
+                step_reward = step_G + step_H
+                if step_reward > best_state_reward:
+                    best_state_reward = step_reward
+                logging.debug(f"  Rollout node {start_node.id}: Action {action}, NextPose {next_sim_pose_id}, step_reward={step_reward:.3f}, StepG={step_G:.3f}, StepH={step_H:.3f}")
 
 
                 # 6. If a node exist for that action, retrieve it to get appropriate next actions
@@ -535,7 +548,7 @@ class MCTS:
 
         # Phase 4: Backpropagation
         self._backpropagate(selected_node, reward)
-        
+    
         children_info = [('a', a, 'child id',c.id,'N',c.N,'T', round(c.total_reward,2),'efe_av', round(c.get_averaged_reward(),2)) for a,c in root_node.childs.items()]
         logging.info(f"Root node children stats: {children_info}")
         # logging.debug(f"=== Finished MCTS Simulation ===")
@@ -605,7 +618,6 @@ class MCTS:
         full_action_values = [action_values[available_actions.index(a)] if a in available_actions else 0 for a in self.model_interface.get_possible_actions()]
         full_q_pi = [q_pi[available_actions.index(a)] if a in available_actions else 0 for a in self.model_interface.get_possible_actions()]
         return best_action_id, (full_q_pi, full_action_values)
-    
 # --- Utility Functions ---
 def plot_mcts_tree(root_node):
     """Visualises the Monte Carlo Tree Search (MCTS) tree."""

@@ -231,6 +231,27 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 
+
+def plot_transitions_per_actions(B, agent_state_mapping,possible_actions):
+    """usefull when matrices too big"""
+    labels = [value['state'] for value in agent_state_mapping.values()]
+    actions_plots = []
+    l = len(labels) *1.5
+    for action in range(len(possible_actions)):
+        fig = plt.figure(action, figsize=(l,l))
+        a = B[:len(labels),:len(labels),action]
+        fig = sns.heatmap(a, linewidth=0.5, vmin=0,vmax=1.0 ,cmap="YlOrBr", xticklabels=labels, yticklabels=labels)
+        fig.tick_params(axis='both', which='major', labelsize=14)  # Adjust label font size
+        fig.set_title(possible_actions[action], fontsize=20)
+        fig.set_xlabel('Prev State', fontsize=16)
+        fig.set_ylabel('Next State', fontsize=16)
+
+        # plt.tight_layout(pad=35)
+        # plt.show()
+        
+        actions_plots.append(fig)
+    return actions_plots
+
 def plot_transitions(B: np.ndarray, state_map: dict, actions: dict) -> np.ndarray:
     """Plot Transitions matrix showing the probability of a transition between two states given a certain action."""
     
