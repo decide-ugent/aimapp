@@ -7,14 +7,14 @@ import copy
 
 
 #TEST IMPORTS
-# import datetime
-# from pathlib import Path
-# import pickle
-# import matplotlib.pyplot as plt
-# import networkx as nx
+import datetime
+from pathlib import Path
+import pickle
+import matplotlib.pyplot as plt
+import networkx as nx
 
 # Configure logging
-#logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Node Class ---
 class Node:
@@ -97,13 +97,18 @@ class Node:
         """Selects the child with the highest UCB1 score."""
         best_score = -float('inf')
         best_child = None
+        scores = []
         for action, child in self.childs.items():
             score = child.get_ucb1_score(c_param,use_utility, use_info_gain)
             # logging.info(f"  Child {child.id} (Action {action}) UCB1: {score:.2f}")
-            # scores.append(score)
-            if score > best_score and child.id not in parent_list:
+            scores.append(score)
+            if score > best_score and child.id not in parent_list[1:]:
                 best_score = score
                 best_child = child
+
+        if best_child is None:
+            best_child_id = np.argmax(scores)
+            best_child = list(self.childs.values())[best_child_id]
         #logging.debug(f"Node {self.id}: Selected child {best_child.id if best_child else 'None'} with score {best_score:.2f}")
         return best_child
     
@@ -272,6 +277,10 @@ class MCTS:
                 current = next
             else:
                 break
+            #safety to avoid loopings
+            counting_occurences = {x: self.parent_list.count(x) for x in set(self.parent_list)}
+            if any(x > 2 for x in counting_occurences.values()):
+                break
             #USING AIF
             # children_G = current.all_children_AIF()
             # q_pi, best_action = self.model_interface.infer_policy_over_actions(children_G, current.possible_actions, action_selection='stochastic', alpha=1.0)
@@ -296,7 +305,7 @@ class MCTS:
             next_pose_id = self.model_interface.get_next_node_pose_id(node.pose_id, action)
             #=== check if new  (redundant)===#
             if action not in node.possible_actions:
-                if next_pose_id < 0 or next_pose_id in self.parent_list : #no known or valid next node
+                if next_pose_id < 0 or next_pose_id in self.parent_list[:-1] : #no known or next pose looping back in path
                     continue
                 node.possible_actions.append(action)
             
@@ -675,11 +684,11 @@ def pickle_load_model(store_path: str = None):
 # --- Main Execution ---
 if __name__ == "__main__":
     # --- Configuration ---
-    NUM_SIMULATIONS = 50  # Number of MCTS simulations per planning step
-    NUM_STEPS = 1         # Number of actions to take in the environment
+    NUM_SIMULATIONS = 30  # Number of MCTS simulations per planning step
+    NUM_STEPS = 2      # Number of actions to take in the environment
     MAX_ROLLOUT_DEPTH = 10 # Maximum depth for the simulation (rollout) phase
     C_PARAM = 5
-    MODEL_PATH = '/home/idlab332/workspace/ros_ws/src/map_dm_nav/map_dm_nav/test1_noob_model.pkl' # Path to your pickled model
+    MODEL_PATH = '/home/idlab332/workspace/ros_ws/tests/big_ware/0/model.pkl' # Path to your pickled model
     PLOT_TREE = True      # Whether to plot the MCTS tree after each planning step
 
     # --- Initialization ---
@@ -690,8 +699,8 @@ if __name__ == "__main__":
 
     #39 - 1step state33, 35 - 2 steps state 60, 30- 3steps state3, 7- 5 step - state24
     #GOAL TESTS
-    underlying_model.goal_oriented_navigation([35,-1], pref_weight = 10.0)
-    underlying_model.use_utility = True
+    # underlying_model.goal_oriented_navigation([7,-1], pref_weight = 10.0)
+    # underlying_model.use_utility = True
     # underlying_model.use_states_info_gain = True
     obstacle_dist_per_actions = [4.507089614868164, 4.789198398590088, 4.365529537200928, 2.7395713329315186, 2.3621973991394043, 1.7037241458892822, 1.7129298448562622, 2.037290573120117, 1.3319873809814453, 6.884044647216797, 5.011831283569336, 4.510308742523193]
     possible_actions = underlying_model.define_next_possible_actions(obstacle_dist_per_actions, restrictive=True)
@@ -768,8 +777,19 @@ if __name__ == "__main__":
             # IMPORTANT: Detach the chosen next state from its parent (the previous state).
             # This makes the chosen next state the new root for the *next* planning step
             # and allows the old parts of the tree to be garbage collected.
-            next_node.detach_parent()
-            current_node = next_node # Update the current state
+            
+            #WITH MEMORY
+            # next_node.detach_parent()
+            #current_node = next_node # Update the current state
+
+            #TMP TO TEST AS IN OUR MODEL
+
+            current_node = Node(state_qs=next_node.state_qs,
+                     pose_id=next_node.pose_id,
+                     parent=None,
+                     action_index=None,
+                     observation=next_node.observation, 
+                     possible_actions=next_node.possible_actions)
 
             # Log information about the new state (optional)
             # logging.info(f"New State Observation (Visual): {current_node.observation[0][0].round(2)}")
