@@ -305,7 +305,7 @@ def plot_state_in_map_wt_gt(model:object, gt_odom:list, odom:list=None) -> np.nd
     fig, ax = plt.subplots(figsize=(dim,dim))  
     if gt_odom is not None:
         circle=plt.Circle((gt_odom[1], gt_odom[0]),radius=0.21,fill=True, color='0.5') #linestyle='dotted'
-    plt.gca().add_patch(circle)
+        plt.gca().add_patch(circle)
     if odom is not None:
         circle2=plt.Circle((odom[1], odom[0]),radius=0.15,fill=True, color='0.2') #linestyle='dotted'
         plt.gca().add_patch(circle2)
@@ -386,7 +386,7 @@ def plot_state_in_map_wt_gt_model_transition(model1:object, model2:object, gt_od
     fig, ax = plt.subplots(figsize=(dim,dim))  
     if gt_odom is not None:
         circle=plt.Circle((gt_odom[1], gt_odom[0]),radius=0.21,fill=True, color='0.5') #linestyle='dotted'
-    plt.gca().add_patch(circle)
+        plt.gca().add_patch(circle)
     plt.plot()
     fig = plot_state_in_map_model_transition(model1, model2, fig_ax=[fig,ax])
     return fig
@@ -539,21 +539,43 @@ def plot_graph_as_cscg(A:np.ndarray, agent_state_mapping:dict, \
 def plot_mcts_tree(root_node):
     """Visualises the Monte Carlo Tree Search (MCTS) tree."""
     G = nx.DiGraph()  # Directed Graph
+    dico = {}
+    visited = set()  # To avoid infinite recursion
 
     # Recursively extract tree structure
     def add_nodes_edges(node, parent=None, action=None):
-        node_label = f"ID: {node.id}\nR: {round(node.state_reward, 2)}"
-        G.add_node(node.id, label=node_label, reward=node.state_reward)
+        if node.id in visited:
+            if parent is not None:
+                G.add_edge(parent.id, node.id, action=int(action))
+            return  # Already added and traversed — skip further traversal
+
+        visited.add(node.id)
+
+        # Aggregate or update visit count
+        if node.id not in dico:
+            dico[node.id] = node.N
+        else:
+            dico[node.id] += node.N
+
+        # Label for display
+        if node.N > 0 :
+            reward = node.total_reward/node.N
+        else:
+            reward = node.total_reward
+        node_label = f"ID: {node.id}\nR: {round(reward, 2)}"
+        G.add_node(node.id, label=node_label, reward=reward)
 
         if parent is not None:
-            G.add_edge(parent.id, node.id, action=int(action))  # Add edge with action label
-            #G.add_edge(node.id, parent.id, action=rev_action(action))  
-        # print('node has children?', node.has_children_nodes())
+            G.add_edge(parent.id, node.id, action=int(action))
+
         if node.has_children_nodes():
             for action, child_node in node.childs.items():
-                # print('child id', child_node.id)
                 add_nodes_edges(child_node, node, action)
+
     add_nodes_edges(root_node)
+
+    dico = sorted(dico.items(), key=lambda x: x[1])
+    # logging.info(f"max visits:{dico}, len dict:{len(dico)}")
 
     pos = nx.kamada_kawai_layout(G)
     # Scale positions to increase spacing
@@ -563,16 +585,11 @@ def plot_mcts_tree(root_node):
     rewards = [G.nodes[n]['reward'] for n in G.nodes]
     min_reward = min(rewards) if rewards else 0
     max_reward = max(rewards) if rewards else 1
-    node_colors = [(r - min_reward) / (max_reward - min_reward + 1e-6) for r in rewards] # Normalize 0-1
+    node_colors = [(r - min_reward) / (max_reward - min_reward + 1e-6) for r in rewards]
 
-    # Node sizes based on visit count (log scale might be better)
-    # sizes = [G.nodes[n]['N'] for n in G.nodes]
-    # #node_sizes = [200 + s * 10 for s in sizes] # Linear scaling
-    # node_sizes = [200 + 200 * math.log(s + 1) for s in sizes] # Log scaling
-
-    fig = plt.figure(figsize=(12, 8))
+    plt.figure(figsize=(12, 8))
     nx.draw(G, pos, with_labels=True, labels=nx.get_node_attributes(G, 'label'),
-            node_color=node_colors, cmap=plt.cm.cool,node_size=1500,
+            node_color=node_colors, cmap=plt.cm.cool, node_size=1500,
             font_size=8, font_weight='bold', edgecolors="black", alpha=0.9)
 
     # Draw edge labels (actions)
@@ -581,7 +598,6 @@ def plot_mcts_tree(root_node):
 
     plt.title("Monte Carlo Tree Search (MCTS) Visualization")
     # plt.show()
-    return fig
 
 
 #===== PLOT ALL PANORAMAS ====#
