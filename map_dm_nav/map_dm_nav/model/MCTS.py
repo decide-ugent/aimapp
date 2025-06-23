@@ -102,7 +102,7 @@ class Node:
             score = child.get_ucb1_score(c_param,use_utility, use_info_gain)
             # logging.info(f"  Child {child.id} (Action {action}) UCB1: {score:.2f}")
             scores.append(score)
-            if score > best_score and child.id not in parent_list[1:]:
+            if score > best_score : # and child.id not in parent_list[1:]:
                 best_score = score
                 best_child = child
 

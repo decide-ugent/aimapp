@@ -88,6 +88,11 @@ class HighLevelNav_ROSInterface(Node):
             self.Views.set_memory_views(self.model.get_memory_views())
             #self.model.policy_len = 5
 
+            #Didn't exist during exploration runs (they were fixed parameters, not self)
+            self.model.num_simulations = 30  # Number of MCTS simulations per planning step
+            self.model.max_rollout_depth = 10 # Maximum depth for the simulation (rollout) phase
+            self.model.c_param = 5
+
             obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(n_actions)
             self.get_logger().info('start POSE: ' + str(self.model.PoseMemory.get_odom())+', '+str(self.model.current_pose))
 
@@ -96,7 +101,7 @@ class HighLevelNav_ROSInterface(Node):
             #self.share_believed_odom(p_idx) #send internally believed pose to /odom so it matches internal belief
         
             self.get_logger().info('ob id :'+ str(ob_id) + 'and match score: '+ str(ob_match_score))
-            self.get_logger().info('QS: ' + str(self.model.get_belief_over_states()[0])+'len '+ str(len(self.model.get_belief_over_states()[0])))
+            #self.get_logger().info('QS: ' + str(self.model.get_belief_over_states()[0])+'len '+ str(len(self.model.get_belief_over_states()[0])))
             #self.get_logger().info('POSE: ' +str(self.model.PoseMemory.get_odom())+','+str(self.model.current_pose) + ', p_idx: ' + str(p_idx))
         self.save_model()
         
@@ -121,7 +126,9 @@ class HighLevelNav_ROSInterface(Node):
         if ob_id is not None:
             self.get_logger().info('We are aiming for goal ' + str(ob_id))
             #We give the panorama id and no pose as objective
-            self.model.goal_oriented_navigation([ob_id,-1], pref_weight = 5.0)
+            self.model.goal_oriented_navigation([ob_id,-1], pref_weight = 10.0)
+            preferred_states = np.argwhere(self.model.Cs > np.amin((self.model.Cs>0).astype(float))).flatten()
+            self.get_logger().info('Prefered states ' + str(preferred_states))
         else:
             self.model.explo_oriented_navigation()
             self.get_logger().info('We are exploring aimlessly')

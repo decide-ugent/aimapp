@@ -17,7 +17,7 @@ class Ours_V5_RW(Agent):
                    lookahead_node_creation=3) -> None:
         
         #MCTS PARAMETERS
-        self.num_simulations = 25  # Number of MCTS simulations per planning step
+        self.num_simulations = 30  # Number of MCTS simulations per planning step
         self.max_rollout_depth = 10 # Maximum depth for the simulation (rollout) phase
         self.c_param = 5
         
@@ -737,7 +737,9 @@ class Ours_V5_RW(Agent):
         return G
     
     def infer_inductive_preference(self, current_qs:np.ndarray, qs_pi:np.ndarray, C=None, logging=None)->float:
-        """ given the observation belief of a state, what is the utility term
+        """ given the observation belief of a state, what is the utility term of the state, 
+        we propagate interest in states leading toward the goal. Based on the paper "Active Inference and Intentional Behaviour"
+        NOTE: we can only see the goal if it is under self.max_rollout_depth from our position (else 0 influence)
         NOTE: THIS WORKS FOR VANILLA MODEL ONLY (NOT MMP) AS WE CONSIDER QS to have only 1 step 
         """
         if C is None:
