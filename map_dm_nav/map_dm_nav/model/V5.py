@@ -15,6 +15,13 @@ class Ours_V5_RW(Agent):
                  learning_rate_pB=3.0, n_actions= 6,\
                  influence_radius:float=0.5, robot_dim:float=0.25, \
                    lookahead_node_creation=3) -> None:
+        
+        #MCTS PARAMETERS
+        self.num_simulations = 30  # Number of MCTS simulations per planning step
+        self.max_rollout_depth = 10 # Maximum depth for the simulation (rollout) phase
+        self.c_param = 5
+        
+        
         self.agent_state_mapping = {} #testing purposes
         self.influence_radius = influence_radius
         self.robot_dim = robot_dim 
@@ -224,6 +231,7 @@ class Ours_V5_RW(Agent):
         self.use_param_info_gain = False #if true, do not use with the other terms
         self.use_states_info_gain = True 
         self.use_utility = False
+        self.use_inductive_inference = False
 
     def goal_oriented_navigation(self, obs=None, **kwargs):
         pref_weight = kwargs.get('pref_weight', 1.0)
@@ -233,6 +241,7 @@ class Ours_V5_RW(Agent):
         #NOTE: if we want it to prefere this C but still explore a bit once certain about state 
         #(keep exploration/exploitation balanced) keep info gain
         self.use_utility = True
+        self.use_inductive_inference = True
 
     def set_action_step(self, action):
         ''' only to do if we don't nfer action'''
@@ -312,26 +321,38 @@ class Ours_V5_RW(Agent):
             p_idx = -2
         return p_idx
 
-    def get_observation_most_likely_states(self, z_score:float, observations:list=[])->int:
+    def get_observation_most_likely_states(self, observations: list, per_threshold: float = 0.5) -> list:
         """
-        Given a z_scores (usually around 2), is the agent certain about the state. If it is, to which pose does it correspond?
-        Return pose -1 if < threhsold, else return pose id.
-        If no state stands out at all, we don't know where we are and return -2
+        standout detector using desired min percentage + fallback for sparse/multi-peak distributions in case (I think it should be removed)
         """
-        likelihood = self.get_A()[0][observations[0],:]
-        p_idx = -1
-        mean = np.mean(likelihood)
-        std_dev = np.std(likelihood)
-        # print('likelihood mean and std_dev', mean, std_dev)
-        # Calculate Z-scores
-        z_scores = (likelihood - mean) / std_dev
-        # Get indices of values with Z-score above 2
-        outlier_indices = np.where(np.abs(z_scores) > z_score)[0]       
-        
-        #print("likelihood Indices of outliers (Z-score >",z_score,"):" , outlier_indices)
-        #If we are sure of a state (independent of number of states), we don't have pose as ob and A allows for pose
-    
-        return outlier_indices
+        likely_states = {}
+
+        for modality, ob in enumerate(observations):
+            if ob < 0:
+                    continue
+            standout_indices = []
+            qo = np.array(self.get_A()[modality][ob])
+            # print('qo', qo.round(3))
+            # threshold for standout values
+            standout_indices = np.where(qo >= per_threshold)[0]
+
+            # Special case: only one clear maximum, much larger than rest
+            max_val = np.max(qo)
+            second_max = np.partition(qo.flatten(), -2)[-2]
+            # print('max_val', max_val,'second_max',second_max)
+            if max_val < 4 * second_max and second_max not in standout_indices:
+                np.append(standout_indices,second_max)
+            # print('standout_indices',standout_indices)
+            for idx in standout_indices:
+                likely_states[idx] = likely_states.get(idx, 0) + 1
+
+        if not likely_states:
+            return []
+        # Return most recurrent standout indices across modalities
+        most_recurrent = max(likely_states.values())
+        standout_final = [state for state, count in likely_states.items() if count == most_recurrent]
+
+        return standout_final
     
     def get_expected_observation(self, qs=np.ndarray, A:np.ndarray=None)-> np.ndarray:
         """ get observation belief for state qs"""
@@ -360,14 +381,12 @@ class Ours_V5_RW(Agent):
         TODO: adapt for when we want a full policy
 
         """
-        num_simulations = 25  # Number of MCTS simulations per planning step
-        max_rollout_depth = 10 # Maximum depth for the simulation (rollout) phase
-        c_param = 5
-        mcts = MCTS(self, c_param, num_simulations, max_rollout_depth)
+        
+        mcts = MCTS(self, self.c_param, self.num_simulations, self.max_rollout_depth)
 
         observations = kwargs.get('observations', None)
         next_possible_actions = kwargs.get('next_possible_actions', None)
-        save_action_memory = kwargs.get('save_action_memory', True)
+        plot_MCTS_tree = kwargs.get('plot_MCTS_tree', False)
 
         #If we are not inferring state at each state during the model update, we do it here
         if observations is not None and self.current_pose is None:
@@ -391,16 +410,15 @@ class Ours_V5_RW(Agent):
 
         best_actions, data = mcts.start_mcts(state_qs=initial_belief_qs,
                      pose_id=initial_pose_id, observation=initial_observation, \
-                     next_possible_actions=next_possible_actions, num_steps=num_steps, logging=None)
+                     next_possible_actions=next_possible_actions, num_steps=num_steps, logging=logging, plot=plot_MCTS_tree)
         
-        if save_action_memory:
-            #NOTE: THIS CONSIDERONLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
-            self.q_pi = data['qpi'][0]
-            self.G = data['efe'][0]
+        #NOTE: THIS CONSIDERONLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
+        self.q_pi = data['qpi'][0]
+        self.G = data['efe'][0]
 
-            #NOTE: THIS CONSIDER THAT WE APPLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
-            self.action = np.array([best_actions[0]])
-            self.step_time()
+        #NOTE: THIS CONSIDER THAT WE APPLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
+        self.action = np.array([best_actions[0]])
+        self.step_time()
         
         return best_actions[:num_steps], data
     
@@ -723,6 +741,51 @@ class Ours_V5_RW(Agent):
 
         return G
     
+    def infer_inductive_preference(self, current_qs:np.ndarray, qs_pi:np.ndarray, C=None, logging=None)->float:
+        """ given the observation belief of a state, what is the utility term of the state, 
+        we propagate interest in states leading toward the goal. Based on the paper "Active Inference and Intentional Behaviour"
+        NOTE: we can only see the goal if it is under self.max_rollout_depth from our position (else 0 influence)
+        NOTE: THIS WORKS FOR VANILLA MODEL ONLY (NOT MMP) AS WE CONSIDER QS to have only 1 step 
+        """
+        if C is None:
+            C = self.C
+        current_qs = current_qs[0]
+        qs_arg_max = np.argmax(current_qs)  #NOTE: not sure this is ideal...
+        model_B = self.get_B()[:,qs_arg_max,:]
+        median = np.median(model_B)
+        B = model_B[model_B > median] 
+        certitude_threshold = max(np.mean(B), 0.15)
+        I = [copy.copy(self.Cs)]
+        #Keep only certain Transitions
+        B_certain_trans = (self.get_B() > certitude_threshold).astype(float)
+
+        found_path = False
+        # print('START with preferred state', np.argmax(I), I)
+        # print('we are in starting state', qs_arg_max, 'prob',current_qs[qs_arg_max])
+        # print('qs_pi',qs_pi)
+        #from preferred states, which states lead to it then we repeat until we are in qs
+        for n in range(self.max_rollout_depth):
+            #TODO: ADD WHEN WE STOP FOR LOOP (WHEN WE ARE ON CURRENT STATE)
+            I_next = ((B_certain_trans.T.dot(I[-1])) > 0).astype(float) # New reachable states (as bool -> float)
+            I_next = np.max(I_next, axis=0) #We consider all states regardless of action
+            # print('backward step', len(I)-1)
+            I.append(I_next)
+            #logging.info(f'States to inflate H {np.argwhere(I[n] > np.amin((I[n] >0).astype(float))).flatten()}')
+            if I[-1][qs_arg_max] >= current_qs[qs_arg_max]:
+                # print('we end process induction in ',n+1,' steps,current state', qs_arg_max)
+                n-=1
+                found_path = True
+                break
+        n+=1 #to consider that I[0] is goal
+        if found_path:
+            if logging is not None:
+                logging.info(f'Final States to inflate H {np.argwhere(I[n] > np.amin((I[n] >0).astype(float))).flatten()}')
+            H = np.log(certitude_threshold)*I[n].dot(qs_pi[0])
+        else:
+            H = 0.0
+
+        return H
+    
     #==== OTHER METHODS ====#
 
     def determine_next_pose(self, action_id:int, pose:list=None,  min_dist_to_next_node:float=None):
@@ -775,9 +838,6 @@ class Ours_V5_RW(Agent):
                 if registered_pose[0] != next_pose[0] or registered_pose[1] != next_pose[1] :
                     possible_actions.remove(action)
                     
-            
-    
-
         if "STAY" in self.possible_actions.values():
             possible_actions.append(n_actions)
 
@@ -1025,10 +1085,20 @@ class Ours_V5_RW(Agent):
     
     def update_C_dim(self):
         if self.C is not None:
-            num_obs, num_states, num_modalities, num_factors = utils.get_model_dimensions(A=self.A) 
-            for m in range(num_modalities):
-                if self.C[m].shape[0] < num_obs[m]:
-                    self.C[m] = np.append(self.C[m], [0]*(num_obs[m]- self.C[m].shape[0]))
+            preferences = []
+            for m in range(self.num_modalities):
+                if self.C[m].shape[0] < self.num_obs[m]:
+                    self.C[m] = np.append(self.C[m], [0]*(self.num_obs[m]- self.C[m].shape[0]))
+                    preference = np.argwhere(self.C[m] > np.amin((self.C[m]>0).astype(float))).flatten()
+                    if len(preference) > 0:
+                        preferences.extend(list(preference)) 
+                    else:
+                        preferences.append(-1)
+            if len(preferences)>0: #We check if those preferences fit new states
+                desired_states = self.get_observation_most_likely_states(observations=preferences, per_threshold=0.45)
+                self.Cs = np.zeros(self.num_states)
+                for state in desired_states:
+                    self.Cs[state] = 1.0
     
     def update_preference(self, obs:list=[-1,-1], pref_weight:float=1.0):
         """given a list of observations (must fill all expected observation. If no preference enters -1) we fill C with thos as preference. 
@@ -1039,6 +1109,7 @@ class Ours_V5_RW(Agent):
             self.update_A_dim_given_obs(obs, null_proba=[False]*len(obs))
 
             C = self._construct_C_prior()
+            Cs = np.zeros(self.num_states)
 
             for modality, ob in enumerate(obs):
                 if ob >= 0:
@@ -1047,13 +1118,15 @@ class Ours_V5_RW(Agent):
                     ob = utils.to_obj_array(ob_processed)
                 else:
                     ob = utils.obj_array_zeros([self.num_obs[modality]])
-                C[modality] = np.array(ob[0]) * pref_weight
+                C[modality] = np.array(ob[0])
 
             if not isinstance(C, np.ndarray):
                 raise TypeError(
                     'C vector must be a numpy array'
                 )
+            C = C * pref_weight
             self.C = utils.to_obj_array(C)
+
 
             assert len(self.C) == self.num_modalities, f"Check C vector: number of sub-arrays must be equal to number of observation modalities: {self.num_modalities}"
 
@@ -1062,6 +1135,12 @@ class Ours_V5_RW(Agent):
         else:
             self.preferred_ob = [-1,-1]
             self.C = self._construct_C_prior()
+
+        desired_states = self.get_observation_most_likely_states(observations=obs, per_threshold=0.45)
+        for state in desired_states:
+            Cs[state] = 1.0
+        self.Cs = Cs
+        
 
     #====== UPDATE MODEL ======#
     def update_transitions_both_ways(self,qs:np.ndarray, next_qs:np.ndarray, action_id:int, \

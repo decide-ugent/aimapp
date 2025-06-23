@@ -231,6 +231,27 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 
+
+def plot_transitions_per_actions(B, agent_state_mapping,possible_actions):
+    """usefull when matrices too big"""
+    labels = [value['state'] for value in agent_state_mapping.values()]
+    actions_plots = []
+    l = len(labels) *1.5
+    for action in range(len(possible_actions)):
+        fig = plt.figure(action, figsize=(l,l))
+        a = B[:len(labels),:len(labels),action]
+        fig = sns.heatmap(a, linewidth=0.5, vmin=0,vmax=1.0 ,cmap="YlOrBr", xticklabels=labels, yticklabels=labels)
+        fig.tick_params(axis='both', which='major', labelsize=14)  # Adjust label font size
+        fig.set_title(possible_actions[action], fontsize=20)
+        fig.set_xlabel('Prev State', fontsize=16)
+        fig.set_ylabel('Next State', fontsize=16)
+
+        # plt.tight_layout(pad=35)
+        # plt.show()
+        
+        actions_plots.append(fig)
+    return actions_plots
+
 def plot_transitions(B: np.ndarray, state_map: dict, actions: dict) -> np.ndarray:
     """Plot Transitions matrix showing the probability of a transition between two states given a certain action."""
     
@@ -282,8 +303,9 @@ def plot_transitions(B: np.ndarray, state_map: dict, actions: dict) -> np.ndarra
 def plot_state_in_map_wt_gt(model:object, gt_odom:list, odom:list=None) -> np.ndarray: 
     dim = max(25, int(model.get_n_states()/2))
     fig, ax = plt.subplots(figsize=(dim,dim))  
-    circle=plt.Circle((gt_odom[1], gt_odom[0]),radius=0.21,fill=True, color='0.5') #linestyle='dotted'
-    plt.gca().add_patch(circle)
+    if gt_odom is not None:
+        circle=plt.Circle((gt_odom[1], gt_odom[0]),radius=0.21,fill=True, color='0.5') #linestyle='dotted'
+        plt.gca().add_patch(circle)
     if odom is not None:
         circle2=plt.Circle((odom[1], odom[0]),radius=0.15,fill=True, color='0.2') #linestyle='dotted'
         plt.gca().add_patch(circle2)
@@ -362,8 +384,9 @@ def plot_state_in_map_wt_gt_model_transition(model1:object, model2:object, gt_od
     """
     dim = max(25, int(model2.get_n_states()/2))
     fig, ax = plt.subplots(figsize=(dim,dim))  
-    circle=plt.Circle((gt_odom[1], gt_odom[0]),radius=0.21,fill=True, color='0.5') #linestyle='dotted'
-    plt.gca().add_patch(circle)
+    if gt_odom is not None:
+        circle=plt.Circle((gt_odom[1], gt_odom[0]),radius=0.21,fill=True, color='0.5') #linestyle='dotted'
+        plt.gca().add_patch(circle)
     plt.plot()
     fig = plot_state_in_map_model_transition(model1, model2, fig_ax=[fig,ax])
     return fig
@@ -474,53 +497,6 @@ def plot_state_in_map_model_transition(model1, model2, fig_ax=[None, None]) -> n
     return fig
 
 #===== IGRAPH PLOT ======#
-def plot_mcts_tree(root_node):
-    """Visualises the Monte Carlo Tree Search (MCTS) tree."""
-    G = nx.DiGraph()  # Directed Graph
-
-    # Recursively extract tree structure
-    def add_nodes_edges(node, parent=None, action=None):
-        node_label = f"ID: {node.id}\nR: {round(node.state_reward, 2)}"
-        G.add_node(node.id, label=node_label, reward=node.state_reward)
-
-        if parent is not None:
-            G.add_edge(parent.id, node.id, action=int(action))  # Add edge with action label
-            #G.add_edge(node.id, parent.id, action=rev_action(action))  
-        # print('node has children?', node.has_children_nodes())
-        if node.has_children_nodes():
-            for action, child_node in node.childs.items():
-                # print('child id', child_node.id)
-                add_nodes_edges(child_node, node, action)
-    add_nodes_edges(root_node)
-
-    pos = nx.kamada_kawai_layout(G)
-    # Scale positions to increase spacing
-    pos = {k: (x * 1.5, y * 1.5) for k, (x, y) in pos.items()}
-
-    # Node colors based on reward
-    rewards = [G.nodes[n]['reward'] for n in G.nodes]
-    min_reward = min(rewards) if rewards else 0
-    max_reward = max(rewards) if rewards else 1
-    node_colors = [(r - min_reward) / (max_reward - min_reward + 1e-6) for r in rewards] # Normalize 0-1
-
-    # Node sizes based on visit count (log scale might be better)
-    # sizes = [G.nodes[n]['N'] for n in G.nodes]
-    # #node_sizes = [200 + s * 10 for s in sizes] # Linear scaling
-    # node_sizes = [200 + 200 * math.log(s + 1) for s in sizes] # Log scaling
-
-    plt.figure(figsize=(12, 8))
-    nx.draw(G, pos, with_labels=True, labels=nx.get_node_attributes(G, 'label'),
-            node_color=node_colors, cmap=plt.cm.cool,node_size=1500,
-            font_size=8, font_weight='bold', edgecolors="black", alpha=0.9)
-
-    # Draw edge labels (actions)
-    edge_labels = nx.get_edge_attributes(G, 'action')
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=7, label_pos=0.7)
-
-    plt.title("Monte Carlo Tree Search (MCTS) Visualization")
-    plt.show()
-
-
 def plot_graph_as_cscg(A:np.ndarray, agent_state_mapping:dict, \
                        cmap:colors.ListedColormap,store_path:Path, edge_threshold:float= 1):
     """ plot states connections, 
@@ -556,6 +532,73 @@ def plot_graph_as_cscg(A:np.ndarray, agent_state_mapping:dict, \
         margin=50,
     )
     return out
+
+
+
+# --- MCTS PLOT Function ---
+def plot_mcts_tree(root_node):
+    """Visualises the Monte Carlo Tree Search (MCTS) tree."""
+    G = nx.DiGraph()  # Directed Graph
+    dico = {}
+    visited = set()  # To avoid infinite recursion
+
+    # Recursively extract tree structure
+    def add_nodes_edges(node, parent=None, action=None):
+        if node.id in visited:
+            if parent is not None:
+                G.add_edge(parent.id, node.id, action=int(action))
+            return  # Already added and traversed — skip further traversal
+
+        visited.add(node.id)
+
+        # Aggregate or update visit count
+        if node.id not in dico:
+            dico[node.id] = node.N
+        else:
+            dico[node.id] += node.N
+
+        # Label for display
+        if node.N > 0 :
+            reward = node.total_reward/node.N
+        else:
+            reward = node.total_reward
+        node_label = f"ID: {node.id}\nR: {round(reward, 2)}"
+        G.add_node(node.id, label=node_label, reward=reward)
+
+        if parent is not None:
+            G.add_edge(parent.id, node.id, action=int(action))
+
+        if node.has_children_nodes():
+            for action, child_node in node.childs.items():
+                add_nodes_edges(child_node, node, action)
+
+    add_nodes_edges(root_node)
+
+    dico = sorted(dico.items(), key=lambda x: x[1])
+    # logging.info(f"max visits:{dico}, len dict:{len(dico)}")
+
+    pos = nx.kamada_kawai_layout(G)
+    # Scale positions to increase spacing
+    pos = {k: (x * 1.5, y * 1.5) for k, (x, y) in pos.items()}
+
+    # Node colors based on reward
+    rewards = [G.nodes[n]['reward'] for n in G.nodes]
+    min_reward = min(rewards) if rewards else 0
+    max_reward = max(rewards) if rewards else 1
+    node_colors = [(r - min_reward) / (max_reward - min_reward + 1e-6) for r in rewards]
+
+    plt.figure(figsize=(12, 8))
+    nx.draw(G, pos, with_labels=True, labels=nx.get_node_attributes(G, 'label'),
+            node_color=node_colors, cmap=plt.cm.cool, node_size=1500,
+            font_size=8, font_weight='bold', edgecolors="black", alpha=0.9)
+
+    # Draw edge labels (actions)
+    edge_labels = nx.get_edge_attributes(G, 'action')
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=7, label_pos=0.7)
+
+    plt.title("Monte Carlo Tree Search (MCTS) Visualization")
+    # plt.show()
+
 
 #===== PLOT ALL PANORAMAS ====#
 
@@ -637,6 +680,9 @@ def save_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:list, s
     save_plot_likelihood(A[1], model.get_agent_state_mapping(), \
                         'poses', store_path)
 
+    if action_select_data is not None and 'plot_MCTS_tree' in action_select_data:
+        save_MCTS_tree(action_select_data['plot_MCTS_tree'],store_path)
+
 
 def save_pose_data(model, ob, ob_id, obstacle_dist_per_actions, gt_odom=None, store_path=None, logs=None):
     '''tempo just to get data to run without env'''
@@ -677,6 +723,8 @@ def save_failed_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:
     save_plot_state_in_map(model, gt_odom, store_path)
     if action_select_data is not None and 'poses_efe' in action_select_data:
         save_efe_plot(action_select_data['poses_efe'],n_steps,store_path)
+    if action_select_data is not None and 'plot_MCTS_tree' in action_select_data:
+        save_MCTS_tree(action_select_data['plot_MCTS_tree'],store_path)
     
     # save_overview_image(overview, store_path)
 
@@ -690,6 +738,11 @@ def save_screenshot(store_path:Path=None):
     screenshot = ImageGrab.grab()
     screenshot.save(str(store_path)+ "/screenshot.png")
     screenshot.close()
+
+def save_MCTS_tree(root_node,store_path):
+    fig = plot_mcts_tree(root_node)
+    plt.savefig(str(store_path) + "/" + str("Monte Carlo Tree Search (MCTS) Visualization"))
+    plt.close(fig)
 
 def save_B_transitions(model:object, store_path:Path=None) -> None:
     fig = plot_transitions(model.get_B(),model.get_agent_state_mapping(), model.possible_directions)
@@ -763,6 +816,8 @@ def process_data(model:object, ob_id:int, ob:np.ndarray, ob_match_score:list, po
     qs = model.get_belief_over_states()[0]
 
     A = model.get_A()
+    if gt_odom is None:
+        gt_odom= []
     data['state_proba'] = qs
     data['highest_state_proba'] = np.argmax(qs)
     data['pose_id'] = model.PoseMemory.pose_to_id(save_in_memory=False)

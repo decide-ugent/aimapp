@@ -24,11 +24,11 @@ os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 class HighLevelNav_ROSInterface(Node):
 
-    def __init__(self, load_model, goal_path):
+    def __init__(self, model_dir, goal_path):
         super().__init__('HighLevelNav_model')
         self.get_logger().info('HighLevelNav_model node has been started.')
         
-        self.load_model = load_model
+        self.model_dir = model_dir
         self.goal_path = goal_path
 
         #dist motion in m 
@@ -69,25 +69,30 @@ class HighLevelNav_ROSInterface(Node):
           We setup the model and incorporates the first ghost nodes
         """
         self.Views = ViewMemory(matching_threshold=0.7) #not in model because i can't pickle it
-                               
-        if self.load_model == 'None':
-            #TODO: UPDATE PANORAMA TO KNOW ACTION RANGE
+        
+        if self.model_dir == 'None':
             obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(n_actions)
             #create model
             self.model = Ours_V5_RW(num_obs=2, num_states=2, dim=2, \
                                     observations=[ob_id], \
-                                    n_actions=13, influence_radius=self.influence_radius,\
+                                    n_actions=n_actions, influence_radius=self.influence_radius,\
                                     robot_dim=self.robot_dim, lookahead_node_creation= 8)
             
             self.model.set_memory_views(self.Views.get_memory_views())
             self.model.update_transition_nodes(obstacle_dist_per_actions=obstacle_dist_per_actions)
             self.model.update_C_dim()
-           
+        #NOTE: THIS ASSUME WE RESTART FROM LAST POSITION. TO UPDATE TO RESET CURRENT POSE AND SEARCH WHEREABOUt
         else:
             #load model
-            self.model = pickle_load_model(self.load_model)
+            self.model = pickle_load_model(self.model_dir)
             self.Views.set_memory_views(self.model.get_memory_views())
-            #tfself.model.policy_len = 5
+            #self.model.policy_len = 5
+
+            #Didn't exist during exploration runs (they were fixed parameters, not self)
+            self.model.num_simulations = 30  # Number of MCTS simulations per planning step
+            self.model.max_rollout_depth = 10 # Maximum depth for the simulation (rollout) phase
+            self.model.c_param = 5
+
             obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(n_actions)
             self.get_logger().info('start POSE: ' + str(self.model.PoseMemory.get_odom())+', '+str(self.model.current_pose))
 
@@ -96,7 +101,7 @@ class HighLevelNav_ROSInterface(Node):
             #self.share_believed_odom(p_idx) #send internally believed pose to /odom so it matches internal belief
         
             self.get_logger().info('ob id :'+ str(ob_id) + 'and match score: '+ str(ob_match_score))
-            self.get_logger().info('QS: ' + str(self.model.get_belief_over_states()[0])+'len '+ str(len(self.model.get_belief_over_states()[0])))
+            #self.get_logger().info('QS: ' + str(self.model.get_belief_over_states()[0])+'len '+ str(len(self.model.get_belief_over_states()[0])))
             #self.get_logger().info('POSE: ' +str(self.model.PoseMemory.get_odom())+','+str(self.model.current_pose) + ', p_idx: ' + str(p_idx))
         self.save_model()
         
@@ -121,7 +126,9 @@ class HighLevelNav_ROSInterface(Node):
         if ob_id is not None:
             self.get_logger().info('We are aiming for goal ' + str(ob_id))
             #We give the panorama id and no pose as objective
-            self.model.goal_oriented_navigation([ob_id,-1], pref_weight = 5.0)
+            self.model.goal_oriented_navigation([ob_id,-1], pref_weight = 10.0)
+            preferred_states = np.argwhere(self.model.Cs > np.amin((self.model.Cs>0).astype(float))).flatten()
+            self.get_logger().info('Prefered states ' + str(preferred_states))
         else:
             self.model.explo_oriented_navigation()
             self.get_logger().info('We are exploring aimlessly')
@@ -206,7 +213,7 @@ class HighLevelNav_ROSInterface(Node):
         data = None
         goal_reached = False
         ongoing_try = 0
-        possible_actions = self.model.define_next_possible_actions(obstacle_dist_per_actions) #Not mandatory (just to speed up process), 
+        possible_actions = self.model.define_next_possible_actions(obstacle_dist_per_actions, restrictive=True) #Not mandatory (just to speed up process), 
         #could also be possible_actions = self.model.possible_actions.copy()
         possible_actions = {k: self.model.possible_actions[k] for k in possible_actions}
 
@@ -214,7 +221,7 @@ class HighLevelNav_ROSInterface(Node):
         while not goal_reached and ongoing_try < max_try:
             current_pose = self.model.PoseMemory.get_odom().copy()
             if action is None:
-                actions, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[ob_id],next_possible_actions=list(possible_actions.keys()))
+                actions, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[ob_id],next_possible_actions=list(possible_actions.keys()), logging=None, plot_MCTS_tree=True)
                 action = actions[0]
                 self.get_logger().info('next action: ' + str(action) + ', curr ob_id: '+ str(ob_id)+ \
                                         ', current pose' + str(self.model.PoseMemory.get_odom()[:2])+ 'qs' + str(self.model.qs[0].round(3)) + ' qpi '+ str(data['qpi'][0])+ ' efe '+ str(data['efe'][0]))
@@ -261,7 +268,7 @@ class HighLevelNav_ROSInterface(Node):
 
     def reach_position(self,goal_pose:list): #-> tuple([Bool,Odometry])
         goal_reached, pose= self.motion_client.go_to_pose(goal_pose)
-        if not goal_reached: 
+        if not goal_reached and pose is not None: 
             #if we are one third near the goal, let's say it's ok
             if np.allclose(pose[:2], goal_pose[:2], atol=self.influence_radius/3):
                 goal_reached = True
@@ -323,10 +330,10 @@ def process_path(goal_path: str):
 
 def main(args=None):
     rclpy.init(args=args)
-    load_model = sys.argv[2] if len(sys.argv) > 2 else 'None'
+    model_dir = sys.argv[2] if len(sys.argv) > 2 else 'None'
     goal_path = sys.argv[4] if len(sys.argv) > 4 else 'None'
     
-    highlevelnav = HighLevelNav_ROSInterface(load_model, goal_path)
+    highlevelnav = HighLevelNav_ROSInterface(model_dir, goal_path)
    
     store_dir = create_save_data_dir()
     highlevelnav.store_dir = store_dir
