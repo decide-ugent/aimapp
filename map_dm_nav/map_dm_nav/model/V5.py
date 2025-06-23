@@ -11,14 +11,14 @@ from map_dm_nav.model.pymdp.learning import update_obs_likelihood_dirichlet
 
 class Ours_V5_RW(Agent):
     #====== NECESSARY TO SETUP MODEL ======#
-    def __init__(self, num_obs=2, num_states=2, dim=2, observations=[0,(0,0)], lookahead_policy=4, \
-                 learning_rate_pB=3.0, n_actions= 6,\
+    def __init__(self, num_obs=2, num_states=2, dim=2, observations=[0,(0,0)], lookahead_policy=6, \
+                 n_actions= 6,\
                  influence_radius:float=0.5, robot_dim:float=0.25, \
                    lookahead_node_creation=3) -> None:
         
         #MCTS PARAMETERS
         self.num_simulations = 30  # Number of MCTS simulations per planning step
-        self.max_rollout_depth = 10 # Maximum depth for the simulation (rollout) phase
+        # self.max_rollout_depth = lookahead_policy # Maximum depth for the simulation (rollout) phase
         self.c_param = 5
         
         
@@ -32,12 +32,12 @@ class Ours_V5_RW(Agent):
 
         self.lookahead_node_creation = lookahead_node_creation
         observations, agent_params = self.create_agent_params(num_obs=num_obs, num_states=num_states, observations=observations, \
-                            learning_rate_pB=learning_rate_pB, dim=dim, lookahead_policy=lookahead_policy)
+                             dim=dim, lookahead_policy=lookahead_policy)
         super().__init__(**agent_params)
         self.initialisation(observations=observations)
     
     def create_agent_params(self,num_obs:int=2, num_states:int=2, observations:list=[0,(0,0)], 
-                    learning_rate_pB:float=3.0, dim:int=2, lookahead_policy:int=4):
+                     dim:int=2, lookahead_policy:int=4):
         ob = observations[0]
         p_idx = -1
         if dim > 1:
@@ -69,7 +69,6 @@ class Ours_V5_RW(Agent):
             'pB': pB,
             'policy_len': lookahead_policy,
             'inference_horizon': lookahead_policy,
-            'lr_pB': learning_rate_pB,
             'lr_pA': 5,
             'save_belief_hist': True,
             'action_selection': "stochastic", 
@@ -382,7 +381,7 @@ class Ours_V5_RW(Agent):
 
         """
         
-        mcts = MCTS(self, self.c_param, self.num_simulations, self.max_rollout_depth)
+        mcts = MCTS(self, self.c_param, self.num_simulations, self.policy_len)
 
         observations = kwargs.get('observations', None)
         next_possible_actions = kwargs.get('next_possible_actions', None)
@@ -744,7 +743,7 @@ class Ours_V5_RW(Agent):
     def infer_inductive_preference(self, current_qs:np.ndarray, qs_pi:np.ndarray, C=None, logging=None)->float:
         """ given the observation belief of a state, what is the utility term of the state, 
         we propagate interest in states leading toward the goal. Based on the paper "Active Inference and Intentional Behaviour"
-        NOTE: we can only see the goal if it is under self.max_rollout_depth from our position (else 0 influence)
+        NOTE: we can only see the goal if it is under self.policy_len from our position (else 0 influence)
         NOTE: THIS WORKS FOR VANILLA MODEL ONLY (NOT MMP) AS WE CONSIDER QS to have only 1 step 
         """
         if C is None:
@@ -764,7 +763,7 @@ class Ours_V5_RW(Agent):
         # print('we are in starting state', qs_arg_max, 'prob',current_qs[qs_arg_max])
         # print('qs_pi',qs_pi)
         #from preferred states, which states lead to it then we repeat until we are in qs
-        for n in range(self.max_rollout_depth):
+        for n in range(self.policy_len):
             #TODO: ADD WHEN WE STOP FOR LOOP (WHEN WE ARE ON CURRENT STATE)
             I_next = ((B_certain_trans.T.dot(I[-1])) > 0).astype(float) # New reachable states (as bool -> float)
             I_next = np.max(I_next, axis=0) #We consider all states regardless of action

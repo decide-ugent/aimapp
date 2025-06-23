@@ -74,7 +74,7 @@ class HighLevelNav_ROSInterface(Node):
             obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(n_actions)
             #create model
             self.model = Ours_V5_RW(num_obs=2, num_states=2, dim=2, \
-                                    observations=[ob_id], \
+                                    observations=[ob_id], lookahead_policy=10,\
                                     n_actions=n_actions, influence_radius=self.influence_radius,\
                                     robot_dim=self.robot_dim, lookahead_node_creation= 8)
             
