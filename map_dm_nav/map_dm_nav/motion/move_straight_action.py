@@ -13,9 +13,9 @@ from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.action.server import ServerGoalHandle
 from rclpy.executors import MultiThreadedExecutor
 class MoveStraightAction(Node):
-    def __init__(self, cmd_linear_max:float= 0.1, cmd_angular_max:float=0.2, 
+    def __init__(self, cmd_linear_max:float= 0.15, cmd_angular_max:float=0.2, 
                  angular_goal_tolerance:float = np.pi/10,
-                 distance_goal_tolerance:float = 0.05):
+                 distance_goal_tolerance:float = 0.18):
         super(MoveStraightAction, self).__init__("MoveStraightAction")
         
         qos_policy = rclpy.qos.QoSProfile(
@@ -23,7 +23,7 @@ class MoveStraightAction(Node):
             history=rclpy.qos.HistoryPolicy.KEEP_LAST,
             depth=1
         )
-
+        
         
         self.cmd_pub = self.create_publisher(
             msg_type=Twist,
@@ -32,21 +32,17 @@ class MoveStraightAction(Node):
         
         self.odom_sub = self.create_subscription(
             Odometry,
-            'odometry/shifted',
+            'odometry/filtered',
             self.odom_callback,
             qos_profile=qos_policy
         )
 
-        self.lidar_sub = self.create_subscription(
-            LaserScan,
-            'scan_filtered',
-            self.lidar_callback,
-            qos_profile=qos_policy
-        )
-  
         self.robot_pos_xy = None
         self.robot_theta = np.array([])
         self.V_repulsion = None
+
+        self.last_timer_position= None
+        self.timer = None
 
         self.cmd_angular_max = cmd_angular_max
         self.cmd_linear_max = cmd_linear_max
@@ -124,33 +120,52 @@ class MoveStraightAction(Node):
 
         return robot_pos_xy, theta
 
-    def lidar_callback(self, lidar_msg:LaserScan):
-        """ get repulsion field from scan"""
-        angle_min = lidar_msg.angle_min
-        range_max = lidar_msg.range_max
-        range_min = lidar_msg.range_min
-        step = lidar_msg.angle_increment
+    def check_movement(self):
+        if self.robot_pos_xy is not None:
+            robot_pose = self.robot_pos_xy + [self.robot_theta]
+            if self.last_timer_position is not None \
+            and np.allclose(robot_pose, self.last_timer_position, atol=0.1):
+                self.get_logger().info("Robot has not moved in the last 8 seconds. Starting abortion")
+                self.last_timer_position = None
+                self.stop_motion_timer()
+                self.abort_goal_handle()
+                return
+            self.last_timer_position = robot_pose
 
+    def abort_goal_handle(self):
+        with self._goal_lock:
+            # This server only allows one goal at a time
+            if self._goal_handle is not None and self._goal_handle.is_active:
+                self.get_logger().info('Aborting previous goal')
+                # Abort the existing goal
+                self._goal_handle.abort()
 
-        scan = np.array(lidar_msg.ranges)
-        scan_range  = len(scan)
+    def handle_accepted_callback(self, goal_handle):
+        self.abort_goal_handle()
+        with self._goal_lock:
+            self._goal_handle = goal_handle
+        goal_handle.execute()
 
-        counter = 0
-        x_r = 0
-        y_r = 0
-        
-        for i in range(scan_range): 
-            #If the value of the scan is > 3.5m it's above the lidar scan range
-            if(scan[i] <= range_max and scan[i] >= range_min ):
-                Q_repulsion = 1
-                Current_Q = (Q_repulsion) / (4 * np.pi * pow(scan[i],2));
-                #Projection of the vectors in the x , y coordinates
-                x_r -= Current_Q * np.cos(angle_min+self.robot_theta+step*i);
-                y_r -= Current_Q * np.sin(angle_min+self.robot_theta+step*i);
-            else:
-                counter += 1
-        
+    def cancel_callback(self, goal):
+        """Accept or reject a client request to cancel an action."""
+        self.get_logger().info('Received cancel request')
+        return CancelResponse.ACCEPT
+    
+    def create_motion_timer(self):
+        if self.timer is None:
+            self.timer = self.create_timer(8.0, self.check_movement)
+            #self.timer = threading.Timer(7.0, self.check_movement)
+    
+    def start_motion_timer(self):
+        if self.timer is not None:
+            # self.timer.start()
+            self.timer.reset()
+        else:
+            self.timer = self.create_timer(8.0, self.check_movement)
 
+    def stop_motion_timer(self):
+        if self.timer is not None:
+            self.timer.cancel()
         # angle_of_rep = np.arctan(self.V_repulsion[1]/self.V_repulsion[0])*180/np.pi
         # print(angle_of_rep)
         # self.get_logger().info("the angle of repulsion is : %f" % angle_of_rep)
@@ -160,6 +175,7 @@ class MoveStraightAction(Node):
         goal_pose = goal_handle.request.goal_pose
         feedback_msg = MoveStraight.Feedback()
         result = MoveStraight.Result()
+        self.start_motion_timer()
 
         #THIS WILL BE THE ACTION CALLBACK
         self.get_logger().info("Received a goal from client")
@@ -174,8 +190,8 @@ class MoveStraightAction(Node):
             self.get_logger().info('POSE:'+str(self.robot_pos_xy) + str(self.robot_theta))
             if self.action_goal_exceptions(goal_handle):
                 return MoveStraight.Result()
-            if self.robot_pos_xy is None:
-                continue
+            while self.robot_pos_xy is None:
+                self.execution_rate.sleep()
             goal_pose = full_goal_pose[:2]
             
             direction_vector = goal_pose - self.robot_pos_xy
@@ -231,6 +247,7 @@ class MoveStraightAction(Node):
         pose = [np.round(self.robot_pos_xy[0],3), np.round(self.robot_pos_xy[1],3), np.round(self.robot_theta,4)]
         result.pose = pose
         result.goal_reached = goal_reached
+        self.stop_motion_timer()
         return result
     
     def angle_between(a, b):

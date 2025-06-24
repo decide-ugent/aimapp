@@ -92,49 +92,49 @@ sudo apt install libgphoto2-6
 
 ## Start the project <a name="Start-the-project"></a>
 Start the world
-```
+```bash
 source install/setup.bash 
 ros2 launch map_dm_nav warehouse_launch.py
 ```
 
 OR
-```
+```bash
 export GAZEBO_MODEL_PATH=`pwd`/models
 source /usr/share/gazebo/setup.sh
 ros2 launch aws_robomaker_small_house_world small_house.launch.py gui:=true
 ```
 
 **Spawn the agent**
-```
+```bash
 source install/setup.bash 
 ros2 launch map_dm_nav spawn_turtle_launch.py x:=0.0 y:=0.0
 ```
 **Start Nav2** (optional) -- If started has to start almost simultaneously as the world and spawn due to simulation time reliance.
-```
+```bash
 source install/setup.bash 
 ros2 launch map_dm_nav nav2_humble_launch.py
 ```
 
 **Start the agent**
-```
+```bash
 source install/setup.bash 
 ros2 launch map_dm_nav agent_launch.py
 ```
 
 **Record position GT/believed_odom over time** (optional)
-```
+```bash
 source install/setup.bash 
 ros2 run map_dm_nav simulation_overview_data_save.py
 ```
 
 **Start Rviz** (optional)
-```
+```bash
 rviz2 -d src/map_dm_nav/map_dm_nav/rviz/nav2_default_view.rviz 
 ```
 
 ### Start with existing model or goal
 
-```
+```bash
 ros2 launch map_dm_nav agent_launch.py model_dir:=path_to_model_dir goal_path:=path_to_your_image_file.jpg_png
 ```
 

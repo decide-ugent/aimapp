@@ -11,6 +11,7 @@ from cv_bridge import CvBridge
 import cv2
 
 from map_dm_nav.motion.potential_field_client import PFClient
+from map_dm_nav.motion.move_straight_client import MSClient
 from map_dm_nav.motion.nav2_client import Nav2Client
 from map_dm_nav.obs_transf.get_pano_multiple_camera_client import PanoramaMultipleCamClient
 from map_dm_nav.obs_transf.get_360_camera_client import Panorama360CamClient
@@ -41,6 +42,7 @@ class HighLevelNav_ROSInterface(Node):
   
         self.motion_client = Nav2Client()
         # self.motion_client = PFClient()
+        #self.motion_client = MSClient()
 
         self.img_bridge = CvBridge()
         self.panorama_results = None

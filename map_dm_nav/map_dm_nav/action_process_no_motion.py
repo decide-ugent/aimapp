@@ -69,9 +69,9 @@ class AIFProcessServer(Node):
             self.prev_scans_dist = obstacle_dist_per_actions
 
         else:
-            self.test_folder = get_data_dir(test_id)
+            self.test_folder = get_data_dir(None, test_id)
             self.load_latest_model()
-            obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(n_actions=13)
+            obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(len(self.model.get_possible_actions()))
             # qs = self.model.get_belief_over_states()
             # qo = self.get_expected_observation(qs)
             # self.last_ob_id = np.argmax(qo[0]) #might be imbricated list. to check
