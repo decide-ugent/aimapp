@@ -32,7 +32,7 @@ class DataSaver(Node):
         
         self.odom_sub = self.create_subscription(
             Odometry,
-            '/odom',
+            '/odometry/filtered',
             self.odom_callback,
             10
         )
@@ -165,9 +165,9 @@ class DataSaver(Node):
     def save_data(self):
         elapsed_time = int(time.time() - self.start_time)
         #simulation top view
-        self.save_image(elapsed_time, self.overview_image, self.save_img_folder)
-        #Real robot internal view
-        self.save_image(elapsed_time, self.robot_image, self.save_img_folder)
+        # self.save_image(elapsed_time, self.overview_image, self.save_img_folder)
+        # #Real robot internal view
+        # self.save_image(elapsed_time, self.robot_image, self.save_img_folder)
         model = self.get_latest_model()
         map = self.create_map(model)
         self.save_image(elapsed_time, map, self.save_map_folder)

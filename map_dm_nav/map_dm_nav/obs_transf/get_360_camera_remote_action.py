@@ -43,7 +43,7 @@ class GeneratePanorama360Cam(Node):
                 10)        
         self.odom_sub = self.create_subscription(
                 Odometry,
-                'odometry/filtered',
+                'odom',
                 self.odom_callback,
                 5)
         
@@ -128,7 +128,7 @@ class GeneratePanorama360Cam(Node):
         capture_image_from_bash()#self.get_logger())
         latest_image_path = get_latest_image_file(self.images_dir)
         self.get_logger().info(f"Latest image: {latest_image_path}")
-        images_compilation = [self.img_bridge.cv2_to_imgmsg(read_image(latest_image_path, reduction=4), encoding='rgb8')]
+        images_compilation = [self.img_bridge.cv2_to_imgmsg(read_image(latest_image_path, reduction=6), encoding='rgb8')]
 
         while self.last_scan is None or self.robot_odom is None:
             self.execution_rate.sleep()

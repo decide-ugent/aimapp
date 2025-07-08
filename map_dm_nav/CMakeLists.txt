@@ -56,6 +56,7 @@ install(PROGRAMS
   simulation_tools/reset_turtlebot3_odom.py
   simulation_tools/simulation_overview_data_save.py
   simulation_tools/shift_husarion_odom.py
+  simulation_tools/node_visualizer.py
 
   map_dm_nav/obs_transf/save_cam_in_folder.py
   

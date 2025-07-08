@@ -40,7 +40,8 @@ def generate_launch_description():
                 ('/agent/scan', '/scan_filtered'),
             ]
         )
-    
+
+
 
     potential_flied_action = Node(
             package='map_dm_nav',
@@ -55,7 +56,7 @@ def generate_launch_description():
 
     ld.add_action(agent_node)
     # ld.add_action(panorama_action)
-    ld.add_action(potential_flied_action)
+    # ld.add_action(potential_flied_action)
     ld.add_action(panorama_360_action)
     # ld.add_action(rosbag)
     return ld

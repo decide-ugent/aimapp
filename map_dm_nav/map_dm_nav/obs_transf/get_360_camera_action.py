@@ -126,9 +126,10 @@ class GeneratePanorama360Cam(Node):
         #Then get the latest image in folder and save it in a list
         kill_gphoto2_processes()
         capture_image(self.images_dir, iteration=0)
+
         latest_image_path = get_latest_image_file(self.images_dir)
         self.get_logger().info(f"Latest image: {latest_image_path}")
-        images_compilation = [self.img_bridge.cv2_to_imgmsg(read_image(latest_image_path, reduction=4), encoding='rgb8')]
+        images_compilation = [self.img_bridge.cv2_to_imgmsg(read_image(latest_image_path, reduction=8), encoding='rgb8')]
 
         while self.last_scan is None or self.robot_odom is None:
             self.execution_rate.sleep()
@@ -138,6 +139,7 @@ class GeneratePanorama360Cam(Node):
         result.pano_scan = laser_compilation
         self.get_logger().info("laser_compilation:" + str(laser_compilation))
         self.get_logger().info('Incoming response composed of : %s data'  % (str(len(images_compilation)))) 
+        goal_handle.succeed() 
         return result
 
 

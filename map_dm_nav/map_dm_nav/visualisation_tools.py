@@ -16,7 +16,6 @@ import networkx as nx
 
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend, works headless
-
 import cv2 #cv2 called before matplotlib can results in errors
 def create_custom_cmap(custom_colors) -> colors.ListedColormap:
     return colors.ListedColormap(custom_colors[:]) #,  alpha=None)
@@ -227,11 +226,6 @@ def plot_likelihood(A:np.ndarray, state_mapping=None, tittle_add:str='')-> np.nd
     plt.title(tittle_add + " likelihood distribution (A)")
     return fig
     
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-
-
 def plot_transitions_per_actions(B, agent_state_mapping,possible_actions):
     """usefull when matrices too big"""
     labels = [value['state'] for value in agent_state_mapping.values()]
