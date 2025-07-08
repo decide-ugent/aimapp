@@ -760,7 +760,6 @@ class Ours_V5_RW(Agent):
         # print('we are in starting state', qs_arg_max, 'prob',current_qs[qs_arg_max])
         # print('qs_pi',qs_pi)
         #from preferred states, which states lead to it then we repeat until we are in qs
-        for n in range(self.policy_len):
         for n in range(self.lookahead_policy):
             #TODO: ADD WHEN WE STOP FOR LOOP (WHEN WE ARE ON CURRENT STATE)
             I_next = ((B_certain_trans.T.dot(I[-1])) > 0).astype(float) # New reachable states (as bool -> float)
