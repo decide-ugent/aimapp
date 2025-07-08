@@ -221,7 +221,7 @@ class HighLevelNav_ROSInterface(Node):
         while not goal_reached and ongoing_try < max_try:
             current_pose = self.model.PoseMemory.get_odom().copy()
             if action is None:
-                actions, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[ob_id],next_possible_actions=list(possible_actions.keys()), logging=self.get_logger(), plot_MCTS_tree=True)
+                actions, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[ob_id],next_possible_actions=list(possible_actions.keys()), logging=None, plot_MCTS_tree=False)
                 action = actions[0]
                 self.get_logger().info('next action: ' + str(action) + ', curr ob_id: '+ str(ob_id)+ \
                                         ', current pose' + str(self.model.PoseMemory.get_odom()[:2])+ 'qs' + str(self.model.qs[0].round(3)) + ' qpi '+ str(data['qpi'][0])+ ' efe '+ str(data['efe'][0]))

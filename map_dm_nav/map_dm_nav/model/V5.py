@@ -11,14 +11,13 @@ from map_dm_nav.model.pymdp.learning import update_obs_likelihood_dirichlet
 
 class Ours_V5_RW(Agent):
     #====== NECESSARY TO SETUP MODEL ======#
-    def __init__(self, num_obs=2, num_states=2, dim=2, observations=[0,(0,0)], lookahead_policy=6, \
-                 n_actions= 6,\
-                 influence_radius:float=0.5, robot_dim:float=0.25, \
-                   lookahead_node_creation=3) -> None:
+    def __init__(self, num_obs=2, num_states=2, dim=2, observations=[0,(0,0)], lookahead_policy=4, \
+                n_actions= 6, influence_radius:float=0.5, robot_dim:float=0.25, \
+                lookahead_node_creation=3) -> None:
         
         #MCTS PARAMETERS
         self.num_simulations = 30  # Number of MCTS simulations per planning step
-        # self.max_rollout_depth = lookahead_policy # Maximum depth for the simulation (rollout) phase
+        self.lookahead_policy = lookahead_policy # Maximum depth for the simulation (rollout) phase
         self.c_param = 5
         
         
@@ -32,12 +31,12 @@ class Ours_V5_RW(Agent):
 
         self.lookahead_node_creation = lookahead_node_creation
         observations, agent_params = self.create_agent_params(num_obs=num_obs, num_states=num_states, observations=observations, \
-                             dim=dim, lookahead_policy=lookahead_policy)
+                            dim=dim)
         super().__init__(**agent_params)
         self.initialisation(observations=observations)
     
     def create_agent_params(self,num_obs:int=2, num_states:int=2, observations:list=[0,(0,0)], 
-                     dim:int=2, lookahead_policy:int=4):
+                dim:int=2):
         ob = observations[0]
         p_idx = -1
         if dim > 1:
@@ -67,8 +66,6 @@ class Ours_V5_RW(Agent):
             'B': B_agent,
             'pA': pA,
             'pB': pB,
-            'policy_len': lookahead_policy,
-            'inference_horizon': lookahead_policy,
             'lr_pA': 5,
             'save_belief_hist': True,
             'action_selection': "stochastic", 
@@ -381,7 +378,7 @@ class Ours_V5_RW(Agent):
 
         """
         
-        mcts = MCTS(self, self.c_param, self.num_simulations, self.policy_len)
+        mcts = MCTS(self, self.c_param, self.num_simulations, self.lookahead_policy)
 
         observations = kwargs.get('observations', None)
         next_possible_actions = kwargs.get('next_possible_actions', None)
@@ -764,6 +761,7 @@ class Ours_V5_RW(Agent):
         # print('qs_pi',qs_pi)
         #from preferred states, which states lead to it then we repeat until we are in qs
         for n in range(self.policy_len):
+        for n in range(self.lookahead_policy):
             #TODO: ADD WHEN WE STOP FOR LOOP (WHEN WE ARE ON CURRENT STATE)
             I_next = ((B_certain_trans.T.dot(I[-1])) > 0).astype(float) # New reachable states (as bool -> float)
             I_next = np.max(I_next, axis=0) #We consider all states regardless of action
