@@ -226,11 +226,6 @@ def plot_likelihood(A:np.ndarray, state_mapping=None, tittle_add:str='')-> np.nd
     plt.xlabel("(pose, state)")
     plt.title(tittle_add + " likelihood distribution (A)")
     return fig
-    
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-
 
 def plot_transitions_per_actions(B, agent_state_mapping,possible_actions):
     """usefull when matrices too big"""
@@ -298,7 +293,6 @@ def plot_transitions(B: np.ndarray, state_map: dict, actions: dict) -> np.ndarra
     plt.tight_layout()
 
     return fig
-
 
 def plot_state_in_map_wt_gt(model:object, gt_odom:list, odom:list=None) -> np.ndarray: 
     dim = max(25, int(model.get_n_states()/2))
