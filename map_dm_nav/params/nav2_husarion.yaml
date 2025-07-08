@@ -13,12 +13,12 @@ amcl:
     do_beamskip: false
     global_frame_id: "map"
     lambda_short: 0.1
-    laser_likelihood_max_dist: 12.0
-    laser_max_range: 18.0
+    laser_likelihood_max_dist: 6.0
+    laser_max_range: 12.0
     laser_min_range: -1.0
     laser_model_type: "likelihood_field"
-    max_beams: 60
-    max_particles: 500
+    max_beams: 40
+    max_particles: 400
     min_particles: 50
     odom_frame_id: "odom"
     pf_err: 0.05
@@ -201,9 +201,9 @@ local_costmap:
       global_frame: odom
       robot_base_frame: base_link
 
-      width: 8
-      height: 8
-      resolution: 0.03
+      width: 3
+      height: 3
+      resolution: 0.05
       rolling_window: True
       always_send_full_costmap: True
       transform_tolerance: 10.0
@@ -216,7 +216,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
-        inflation_radius: 0.25
+        inflation_radius: 0.4
         cost_scaling_factor: 3.0
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -228,9 +228,9 @@ local_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
-          raytrace_max_range: 12.0
+          raytrace_max_range: 5.0
           raytrace_min_range: 0.17
-          obstacle_max_range: 12.0
+          obstacle_max_range: 3.0
           obstacle_min_range: 0.17
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
@@ -254,7 +254,7 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
 
-      resolution: 0.05
+      resolution: 0.1
       always_send_full_costmap: True
       track_unknown_space: True
 
@@ -266,7 +266,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
-        inflation_radius: 0.25
+        inflation_radius: 0.4
         cost_scaling_factor: 3.0
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -278,9 +278,9 @@ global_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
-          raytrace_max_range: 12.0
+          raytrace_max_range: 5.0
           raytrace_min_range: 0.17
-          obstacle_max_range: 12.0
+          obstacle_max_range: 3.0
           obstacle_min_range: 0.17
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
@@ -330,7 +330,7 @@ smoother_server:
 waypoint_follower:
   ros__parameters:
     use_sim_time: True
-    loop_rate: 20
+    loop_rate: 15
     stop_on_failure: false
     waypoint_task_executor_plugin: "wait_at_waypoint"
     wait_at_waypoint:

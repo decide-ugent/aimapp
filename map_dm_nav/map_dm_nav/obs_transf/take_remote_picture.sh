@@ -2,7 +2,7 @@
 
 # Configuration
 ROBOT_USER=husarion
-ROBOT_IP=192.168.77.2
+ROBOT_IP=10.10.131.145
 REMOTE_IMAGE_DIR=/home/husarion/Pictures/theta_ricoh_x
 LOCAL_IMAGE_DIR="$(pwd)/husarion_photos"
 FILENAME="IMG-$(date +'%Y-%m-%d_%H-%M-%S').jpg"
