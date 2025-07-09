@@ -652,11 +652,11 @@ def generate_failed_step_save_dir(n_steps: int, store_path:Path=None):
     return store_path
 
 def save_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:list, scan_dist:list, gt_odom:list, action_success:bool, elapsed_time:int,
-                 store_path:Path=None, action_select_data:dict=None)-> None:
+                 store_path:Path=None, action_select_data:dict=None, execution_time:float=np.nan)-> None:
     
     next_possible_actions = model.define_next_possible_actions(scan_dist)
     n_steps = save_data_to_excel(model, ob_id, ob, ob_match_score, next_possible_actions,
-                       scan_dist,gt_odom, action_success, elapsed_time, store_path,action_select_data)
+                       scan_dist,gt_odom, action_success, elapsed_time, store_path,action_select_data, execution_time)
     
     store_path = generate_step_save_dir(n_steps, store_path)
 
@@ -794,17 +794,17 @@ def save_plot_state_graph(model:object, store_path:Path=None) -> None:
 #====================== CSV process =================================#
 
 def save_data_to_excel(model, ob_id, ob, ob_match_score, poss_next_a, \
-                       scan_dist,gt_odom, action_success, elapsed_time, store_path,action_select_data:dict=None):
+                       scan_dist,gt_odom, action_success, elapsed_time, store_path,action_select_data:dict=None, execution_time:float=np.nan) -> int:
     n_steps = model.get_current_timestep()
     data = process_data(model, ob_id, ob, ob_match_score, poss_next_a, n_steps, \
-                 scan_dist,gt_odom,action_success, elapsed_time, action_select_data)
+                 scan_dist,gt_odom,action_success, elapsed_time, action_select_data, execution_time)
     save_step_data_to_file(data, store_path)
     return n_steps
 
 def process_data(model:object, ob_id:int, ob:np.ndarray, ob_match_score:list, poss_next_a:list, n_steps:int, \
-                 scan_dist:list,gt_odom:list,action_success:bool, elapsed_time:int, action_select_data:dict=None)->dict:
+                 scan_dist:list,gt_odom:list,action_success:bool, elapsed_time:int, action_select_data:dict=None,execution_time:float=np.nan)->dict:
     np.set_printoptions(threshold=sys.maxsize)
-    data={'step': n_steps, 'time': elapsed_time , 'action_success': action_success, 'ob_id': ob_id, \
+    data={'step': n_steps, 'time': elapsed_time , 'execution_time':execution_time, 'action_success': action_success, 'ob_id': ob_id, \
           'ob_match_score':ob_match_score, 'possible_next_actions':poss_next_a, \
           }
     qs = model.get_belief_over_states()[0]

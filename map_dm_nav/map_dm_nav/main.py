@@ -9,7 +9,6 @@ from geometry_msgs.msg import Point
 import time
 from cv_bridge import CvBridge
 import cv2
-
 from map_dm_nav.motion.potential_field_client import PFClient
 from map_dm_nav.motion.move_straight_client import MSClient
 from map_dm_nav.motion.nav2_client import Nav2Client
@@ -17,6 +16,7 @@ from map_dm_nav.obs_transf.get_pano_multiple_camera_client import PanoramaMultip
 from map_dm_nav.obs_transf.get_360_camera_client import Panorama360CamClient
 from map_dm_nav.obs_transf.observation_match import ViewMemory
 from map_dm_nav.model.V5 import Ours_V5_RW
+
 #visualisations
 from map_dm_nav.visualisation_tools import create_save_data_dir, save_failed_step_data, remove_white_border,\
                                                     save_step_data, save_efe_plot,pickle_load_model, pickle_dump_model, save_pose_data
@@ -33,7 +33,7 @@ class HighLevelNav_ROSInterface(Node):
         self.goal_path = goal_path
 
         #dist motion in m 
-        self.influence_radius = 0.5
+        self.influence_radius = 2
         self.robot_dim = 0.25
         #The lidar must say that there is X free dist behind position to consider it free #security
 
@@ -49,14 +49,17 @@ class HighLevelNav_ROSInterface(Node):
         self.next_possible_actions = [] #For data saving purposes
         self.model = None
         #====== VISUALISATION PARAMS =====#
-        self.start_time = time.time()
+        
         self.gt_odom = [0,0,0]
         self.store_dir = None
+        self.start_time = time.time()
+        self.execution_time = 0.0
 
         self.publish_believed_odom = self.create_publisher(
             msg_type=Point,
             topic="/believed_odom",
             qos_profile=5)
+
         
     #==== VISUALISATION CALLBACK ====#
 
@@ -148,14 +151,17 @@ class HighLevelNav_ROSInterface(Node):
         """
         agent_possible_directions = self.model.get_possible_actions()
 
-        #start_time = time.time() 
         obstacle_dist_per_actions,ob_id, ob_match_score = self.get_panorama(len(agent_possible_directions))
         # self.get_logger().warn("---GET PANORAMA %s seconds ---" % round(time.time() - start_time,3))
         #convert lidar scan in "can we go in that direction", considering the model directions
 
         if 'STAY' in agent_possible_directions.keys():
             self.next_possible_actions.append([agent_possible_directions['STAY'],1])
+
+        start_time = time.time() #reset start time for next step
         self.model.agent_step_update(action,[ob_id, obstacle_dist_per_actions], logs=self.get_logger())
+        
+        self.execution_time += time.time() - start_time
         #self.get_logger().info('QS: ' + str(self.model.get_belief_over_states()[0]) + 'len '+ str(len(self.model.get_belief_over_states()[0])))
         #self.get_logger().info('POSE: ' + str(self.model.PoseMemory.get_odom())+','+str(self.model.current_pose))
         return obstacle_dist_per_actions, ob_id, ob_match_score
@@ -215,7 +221,10 @@ class HighLevelNav_ROSInterface(Node):
         data = None
         goal_reached = False
         ongoing_try = 0
+
+        
         possible_actions = self.model.define_next_possible_actions(obstacle_dist_per_actions, restrictive=True) #Not mandatory (just to speed up process), 
+        
         #could also be possible_actions = self.model.possible_actions.copy()
         possible_actions = {k: self.model.possible_actions[k] for k in possible_actions}
 
@@ -223,10 +232,14 @@ class HighLevelNav_ROSInterface(Node):
         while not goal_reached and ongoing_try < max_try:
             current_pose = self.model.PoseMemory.get_odom().copy()
             if action is None:
-                actions, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[ob_id],next_possible_actions=list(possible_actions.keys()), logging=None, plot_MCTS_tree=True)
+                start_time = time.time() #reset start time for next step
+                actions, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[ob_id],next_possible_actions=list(possible_actions.keys()), logging=self.get_logger(), plot_MCTS_tree=True)
+                self.execution_time += time.time() - start_time
                 action = actions[0]
                 self.get_logger().info('next action: ' + str(action) + ', curr ob_id: '+ str(ob_id)+ \
                                         ', current pose' + str(self.model.PoseMemory.get_odom()[:2])+ 'qs' + str(self.model.qs[0].round(3)) + ' qpi '+ str(data['qpi'][0])+ ' efe '+ str(data['efe'][0]))
+                
+                
             ##compare current odom to desired orientation/pose to go and determine the pose to reach
             pose_goal, next_pose_id = self.model.determine_next_pose(action)
             if next_pose_id == -1 :
@@ -309,7 +322,7 @@ def save_data_process(highlevelnav:object, ob_id:int, ob_match_score:list,\
     highlevelnav.save_model()
     save_step_data(highlevelnav.model, ob_id, ob, ob_match_score, obstacle_dist_per_actions,\
                 highlevelnav.gt_odom, action_success=True, elapsed_time=elapsed_time,\
-                      store_path=store_dir, action_select_data=data)
+                      store_path=store_dir, action_select_data=data, execution_time = highlevelnav.execution_time )
     if data is not None and 'poses_efe' in data:
         save_efe_plot(data['poses_efe'],highlevelnav.get_current_timestep(),store_dir)
 
@@ -370,19 +383,22 @@ def main(args=None):
     """
     ** RUN MODEL **
     """
-    for action in policy:
-    
-        action, action_data = highlevelnav.define_next_objective(action, ob_id, obstacle_dist_per_actions)
 
+    for action in policy:
+        highlevelnav.execution_time = 0
+        action, action_data = highlevelnav.define_next_objective(action, ob_id, obstacle_dist_per_actions)
+        
         #highlevelnav.get_logger().info('checking the action %f, %s' % (action, str(type(action))))
         #NOTE: UPDATE MODEL INTERNAL ACTION MANUALLY WHEN GIVEN A STATIC POLICY
         if action_data is None:
             highlevelnav.model.set_action_step(action)
         
         obstacle_dist_per_actions, ob_id, ob_match_score = highlevelnav.model_step_process(action)
+
         highlevelnav.get_logger().info('qs: ' +str(highlevelnav.model.get_belief_over_states()[0].round(3)))
         p_idx = highlevelnav.model.infer_current_most_likely_pose(observations= [ob_id], z_score=10)
         highlevelnav.get_logger().info('POSE: ' +str(highlevelnav.model.PoseMemory.get_odom())+','+str(highlevelnav.model.current_pose) + 'p_idx: ' + str(p_idx))
+        
         highlevelnav.share_believed_odom(p_idx) #send internally believed pose to /odom so it matches internal belief
         save_data_process(highlevelnav, ob_id, ob_match_score, obstacle_dist_per_actions=obstacle_dist_per_actions, store_dir= store_dir, data= action_data)
         #highlevelnav.get_logger().warn("---SAVE DATA PROCESS %s seconds ---" % round(time.time() - start_time,3))

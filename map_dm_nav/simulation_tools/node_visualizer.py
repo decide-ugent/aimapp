@@ -64,7 +64,8 @@ class NodeVisualizer(Node):
         
         # Model data storage
         self.current_model = None
-        self.tests_directory = get_save_data_dir("/home/husarion/ros2_ws")
+        self.tests_directory = "/home/idlab332/workspace/ros_ws/tests" #get_save_data_dir(
+        # self.get_logger().info(f"Checking for models in: {self.tests_directory}")
         self.last_model_timestamp = 0
         
         # Visualization parameters
@@ -161,7 +162,7 @@ class NodeVisualizer(Node):
             
             # Get all numbered run directories
             run_dirs = [d for d in results_dir.iterdir() if d.is_dir() and d.name.isdigit()]
-            
+            self.get_logger().info(f"run_dirs {run_dirs}")
             # Log run directories periodically to monitor changes
             if not hasattr(self, '_last_runs_log') or (time.time() - getattr(self, '_last_runs_log', 0)) > 10.0:
                 self.get_logger().info(f"Found run directories: {[d.name for d in run_dirs]}")
@@ -182,7 +183,7 @@ class NodeVisualizer(Node):
             
             # Check for model.pkl in the run directory itself first (final model)
             main_model_file = latest_run_dir / "model.pkl"
-            self.get_logger().debug(f"Checking main model file: {main_model_file}, exists: {main_model_file.exists()}")
+            self.get_logger().info(f"Checking main model file: {main_model_file}, exists: {main_model_file.exists()}")
             
             if main_model_file.exists():
                 mtime = main_model_file.stat().st_mtime
@@ -365,8 +366,8 @@ class NodeVisualizer(Node):
         
         return marker_array
 
+
     def create_connection_markers(self, agent_state_mapping: Dict, B_matrix: np.ndarray, 
-                                 possible_directions: Dict, pose_dist: float, 
                                  frame_id: str = "odom") -> MarkerArray:
         """
         Create marker array for visualizing connections between nodes.
@@ -391,38 +392,23 @@ class NodeVisualizer(Node):
         marker_array.markers.append(clear_marker)
         
         marker_id = 0
-        
-        # Create direction mapping
-        direction_mapping = {}
-        for angle_str, action_id in possible_directions.items():
-            if angle_str == 'STAY':
-                direction_mapping[action_id] = (0, 0)
-            else:
-                # Convert angle to motion vector
-                angle_deg = float(angle_str)
-                angle_rad = np.deg2rad(angle_deg)
-                dx = pose_dist * np.cos(angle_rad)
-                dy = pose_dist * np.sin(angle_rad)
-                direction_mapping[action_id] = (dx, dy)
-        
+
         # Draw connections based on B matrix
-        for (x, y), data in agent_state_mapping.items():
-            state = data.get('state', -1)
-            
-            for action_id, (dx, dy) in direction_mapping.items():
-                next_x, next_y = x + dx, y + dy
-                
-                if (next_x, next_y) in agent_state_mapping:
-                    next_state = agent_state_mapping[(next_x, next_y)].get('state', -1)
-                    
-                    # Check if there's a significant transition probability
-                    if (state >= 0 and next_state >= 0 and 
-                        state < B_matrix.shape[1] and next_state < B_matrix.shape[0] and
-                        action_id < B_matrix.shape[2]):
+        # Draw transitions between states
+        num_states, _, num_actions = B_matrix.shape
+        median = np.median(B_matrix)
+        self.get_logger().debug(f"B_matrix shape: {B_matrix.shape}, median: {median}")
+        for prev_state in range(num_states):
+            for next_state in range(num_states):
+                for action in range(num_actions):
+                    transition_prob = B_matrix[next_state, prev_state, action]
+                    if transition_prob > median:  # Only plot meaningful transitions
+                        # Find corresponding positions in `state_mapping`
+                        prev_pos = next((pos for pos, data in agent_state_mapping.items() if data['state'] == prev_state), None)
+                        next_pos = next((pos for pos, data in agent_state_mapping.items() if data['state'] == next_state), None)
                         
-                        transition_prob = B_matrix[next_state, state, action_id]
-                        
-                        if transition_prob > 0.1:  # Only show significant connections
+                        if prev_pos and next_pos:
+
                             # Create line marker for connection
                             line_marker = Marker()
                             line_marker.header.frame_id = frame_id
@@ -433,8 +419,8 @@ class NodeVisualizer(Node):
                             line_marker.action = Marker.ADD
                             
                             # Line points
-                            start_point = Point(x=float(x), y=float(y), z=self.z_height)
-                            end_point = Point(x=float(next_x), y=float(next_y), z=self.z_height)
+                            start_point = Point(x=float(prev_pos[0]), y=float(prev_pos[1]), z=self.z_height)
+                            end_point = Point(x=float(next_pos[0]), y=float(next_pos[1]), z=self.z_height)
                             line_marker.points = [start_point, end_point]
                             
                             # Scale (line width proportional to transition probability)
@@ -516,8 +502,8 @@ class NodeVisualizer(Node):
                 
                 # Get model parameters for connections and robot pose
                 B_matrix = model.get_B()
-                possible_directions = model.get_possible_directions()
-                pose_dist = model.get_pose_dist()
+                possible_directions = model.get_possible_actions()
+                # pose_dist = model.get_pose_dist()
                 
                 # Get current robot pose if available
                 current_pose = None
@@ -542,10 +528,9 @@ class NodeVisualizer(Node):
                 self.get_logger().debug(f"Published {len(node_markers.markers)} node markers")
                 
                 # Create and publish connection markers if we have B matrix data
-                if B_matrix is not None and possible_directions is not None and pose_dist is not None:
+                if B_matrix is not None and agent_state_mapping is not None :
                     connection_markers = self.create_connection_markers(
-                        agent_state_mapping, B_matrix, possible_directions, pose_dist
-                    )
+                        agent_state_mapping, B_matrix)
                     self.connections_pub.publish(connection_markers)
                     self.get_logger().debug(f"Published {len(connection_markers.markers)} connection markers")
                 
@@ -576,6 +561,7 @@ class NodeVisualizer(Node):
             import traceback
             self.get_logger().error(f"Full traceback: {traceback.format_exc()}")
             # Don't re-raise the exception - let the timer continue
+
 
 
 def main(args=None):
