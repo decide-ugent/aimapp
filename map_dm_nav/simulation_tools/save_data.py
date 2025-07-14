@@ -12,7 +12,7 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import csv
-
+import psutil
 
 from map_dm_nav.visualisation_tools import plot_state_in_map_wt_gt, pickle_load_model
 
@@ -137,6 +137,9 @@ class DataSaver(Node):
                 'husarion_travelled_dist',
                 'visitable_nodes',
                 'travelled_distance',
+                'cpu_usage',
+                'ram_usage',
+                'ram_used_gb'
             ]
             writer.writerow(headers)
         self.get_logger().info(f'Created CSV file: {self.csv_file_path}')
@@ -146,7 +149,15 @@ class DataSaver(Node):
             filename = os.path.join(folder, f'{elapsed_time}.jpg')
             cv2.imwrite(filename, image)
             # self.get_logger().info(f'Saved image: {filename}')
-    
+
+    def record_memory_usage(self):
+        self.cpu = psutil.cpu_percent(interval=1)
+        self.ram = psutil.virtual_memory()
+        # print("CPU usage (%):", self.cpu)
+        # print("RAM usage (%):", self.ram.percent)
+        # print("RAM used (GB):", round(self.ram.used / 1e9, 2))
+
+
     def save_csv_data(self):
         if self.current_time is None:
             return
@@ -179,12 +190,23 @@ class DataSaver(Node):
                 row_data.extend([self.travelled_dist])
             else:
                 row_data.extend([None])
+
+
+            if self.cpu:
+                row_data.extend([self.cpu])
+            else:
+                row_data.extend([None])
+            if self.ram:
+                row_data.extend([self.ram.percent, round(self.ram.used / 1e9, 2)])
+            else:
+                row_data.extend([None, None])
             # Write the row to the CSV
             writer.writerow(row_data)
         # self.get_logger().info(f'Saved additional data to {self.csv_file_path}')
 
     def save_data(self):
-        model = self.get_latest_model()
+        #model = self.get_latest_model()
+        self.record_memory_usage()
         self.save_csv_data()
 
 def main(args=None):
