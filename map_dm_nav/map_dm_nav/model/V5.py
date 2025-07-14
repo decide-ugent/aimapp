@@ -19,8 +19,8 @@ class Ours_V5_RW(Agent):
         self.num_simulations = 30  # Number of MCTS simulations per planning step
         self.lookahead_policy = lookahead_policy # Maximum depth for the simulation (rollout) phase
         self.c_param = 5
-        
-        
+            
+        self.use_inductive_inference = False
         self.agent_state_mapping = {} #testing purposes
         self.influence_radius = influence_radius
         self.robot_dim = robot_dim 
@@ -383,6 +383,7 @@ class Ours_V5_RW(Agent):
         observations = kwargs.get('observations', None)
         next_possible_actions = kwargs.get('next_possible_actions', None)
         plot_MCTS_tree = kwargs.get('plot_MCTS_tree', False)
+        save_action_memory = kwargs.get('save_action_memory', True)
 
         #If we are not inferring state at each state during the model update, we do it here
         if observations is not None and self.current_pose is None:
@@ -411,11 +412,11 @@ class Ours_V5_RW(Agent):
         #NOTE: THIS CONSIDERONLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
         self.q_pi = data['qpi'][0]
         self.G = data['efe'][0]
-
+        if save_action_memory:
         #NOTE: THIS CONSIDER THAT WE APPLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
-        self.action = np.array([best_actions[0]])
-        self.step_time()
-        
+            self.action = np.array([best_actions[0]])
+            self.step_time()
+            
         return best_actions[:num_steps], data
     
     #==== INFERENCE ====#

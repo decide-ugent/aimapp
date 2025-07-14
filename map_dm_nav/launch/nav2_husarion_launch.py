@@ -5,6 +5,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 from ament_index_python.packages import get_package_share_directory
+from launch_ros.actions import Node
 
 def generate_launch_description():
     map_dm_nav_dir = FindPackageShare('map_dm_nav')
@@ -13,6 +14,9 @@ def generate_launch_description():
     map_yaml_file = LaunchConfiguration('map')
     params_file = LaunchConfiguration('params_file')
     use_sim_time = LaunchConfiguration('use_sim_time')
+
+    x_shift = LaunchConfiguration('x', default=0.0)
+    y_shift = LaunchConfiguration('y', default=0.0)
 
     declare_map_yaml_cmd = DeclareLaunchArgument(
         'map',
@@ -40,11 +44,20 @@ def generate_launch_description():
         }.items(),
     )
 
+    
+    odom_shifted = Node(
+            package='map_dm_nav',
+            executable='shift_husarion_odom.py',
+            # namespace='agent',
+            arguments=['-x',x_shift, '-y',y_shift]
+        )
+
     return LaunchDescription(
         [
             declare_map_yaml_cmd,
             declare_params_file_cmd,
             declare_use_sim_time_cmd,
             nav2_bringup_launch,
+            odom_shifted
         ]
     )

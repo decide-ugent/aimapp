@@ -22,7 +22,7 @@ class DataSaver(Node):
                
         self.odom_sub = self.create_subscription(
             Odometry,
-            '/odometry/filtered',
+            '/odometry/shifted',
             self.odom_callback,
             10
         )
@@ -35,12 +35,12 @@ class DataSaver(Node):
         #     10
         # )
 
-        # self.gt_odom_sub = self.create_subscription(
-        #     Odometry,
-        #     '/gazebo/odom',
-        #     self.odom_callback,
-        #     10
-        # )
+        self.gt_odom_sub = self.create_subscription(
+            Odometry,
+            '/odometry/filtered',
+            self.sensor_odom_callback,
+            10
+        )
 
         self.visitable_nodes = self.create_subscription(MarkerArray,
             '/visitable_nodes',
@@ -71,8 +71,13 @@ class DataSaver(Node):
 
         # self.map_data = None
         self.odom= None
+        self.husarion_odom = None
         self.visitable_nodes = {}
         self.travelled_dist  = 0
+        self.husarion_travelled_dist = 0
+
+        self.cpu = None
+        self.ram = None
 
 
     def odom_callback(self, msg):
@@ -89,8 +94,15 @@ class DataSaver(Node):
             self.current_time = self.start_time 
         self.current_time = self.current_time - self.start_time 
 
+    def sensor_odom_callback(self, msg):
+        # Process the sensor odometry data
+        robot_x = np.round(msg.pose.pose.position.x,2)
+        robot_y = np.round(msg.pose.pose.position.y,2)
+        if self.husarion_odom is not None:
+            husarion_travelled_distance = np.sqrt((robot_x - self.husarion_odom[0])**2 + (robot_y - self.husarion_odom[1])**2)
+            self.husarion_travelled_dist += husarion_travelled_distance
+        self.husarion_odom = (robot_x, robot_y)
         
-
     def visitable_nodes_callback(self, marker_array_msg):
         # Process the visitable nodes if needed
         for node_marker in marker_array_msg.markers:
@@ -121,6 +133,8 @@ class DataSaver(Node):
             headers = [
                 "Time", 
                 "odom", 
+                "husarion_odom",
+                'husarion_travelled_dist',
                 'visitable_nodes',
                 'travelled_distance',
             ]
@@ -146,6 +160,16 @@ class DataSaver(Node):
             else:
                 row_data.extend([None])
             #sensors odom
+            if self.husarion_odom:
+                row_data.extend([self.husarion_odom])
+            else:
+                row_data.extend([None])
+            
+            if self.husarion_travelled_dist:
+                row_data.extend([self.husarion_travelled_dist])
+            else:
+                row_data.extend([None])
+
             if self.visitable_nodes:
                 row_data.extend([self.visitable_nodes])
             else:
