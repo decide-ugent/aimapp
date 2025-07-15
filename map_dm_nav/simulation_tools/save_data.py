@@ -3,7 +3,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, OccupancyGrid
 from visualization_msgs.msg import MarkerArray
 from cv_bridge import CvBridge
 import cv2
@@ -48,6 +48,14 @@ class DataSaver(Node):
             10
         )
 
+        self.subscription2 = self.create_subscription(
+            OccupancyGrid,
+            '/map',  
+            self.map_callback,
+            10
+        )
+
+
         
         # self.subscription2 = self.create_subscription(
         #     Image,
@@ -58,6 +66,8 @@ class DataSaver(Node):
 
         experiment = 'ours'
         self.csv_file_path = experiment+'/records.csv'
+        self.save_map_folder = experiment+ '/map'
+        os.makedirs(self.save_map_folder, exist_ok=True)
         os.makedirs(experiment, exist_ok=True)
         self.create_csv_file()
         
@@ -69,10 +79,12 @@ class DataSaver(Node):
         self.start_time = None
         self.current_time = None
 
-        # self.map_data = None
+        self.counter = 0
+        self.map_data = None
         self.odom= None
         self.husarion_odom = None
         self.visitable_nodes = {}
+        self.visited_cells = None
         self.travelled_dist  = 0
         self.husarion_travelled_dist = 0
 
@@ -90,9 +102,10 @@ class DataSaver(Node):
         self.odom = (robot_x, robot_y)
         
         if self.start_time is None:
-            self.start_time = msg.header.stamp.sec
+            self.start_time = abs(msg.header.stamp.sec)#*(1/10**9)
             self.current_time = self.start_time 
-        self.current_time = self.current_time - self.start_time 
+        current_time = abs(msg.header.stamp.sec)#*(1/10**9)
+        self.current_time = current_time - self.start_time 
 
     def sensor_odom_callback(self, msg):
         # Process the sensor odometry data
@@ -119,6 +132,71 @@ class DataSaver(Node):
             observation = int(text_splitted[1][1:])
             self.visitable_nodes[state] = {'pose': (x, y, z), 'observation': observation}
 
+    def save_map(self):
+        # Save the map only if we have received it
+        if self.map_data is None:
+            self.get_logger().info('No map data received yet.')
+            return
+    
+        map_image = self.generate_map()
+
+        # Save the image
+        map_file_name = os.path.join(self.save_map_folder, f"map_{self.current_time}")
+        image_path = f"{map_file_name}.pgm"
+        cv2.imwrite(image_path, map_image)
+        self.get_logger().info(f'Saved map image {image_path}')
+
+    def generate_map(self):
+        if self.map_data is not None:
+            # Convert OccupancyGrid to a numpy array
+            width = self.map_data.info.width
+            height = self.map_data.info.height
+            resolution = self.map_data.info.resolution
+            origin = self.map_data.info.origin
+
+            map_array = np.array(self.map_data.data).reshape((height, width))
+
+            # Count the number of cells that are not -1 (known cells)
+            self.visited_cells = np.count_nonzero(map_array != -1)
+            print(f"Number of known cells (not -1): {self.visited_cells}")
+            
+            # Convert map data to an image: -1 -> unknown, 0 -> free, 100 -> occupied
+            map_image = np.zeros_like(map_array, dtype=np.uint8)
+            map_image[map_array == -1] = 205  # Unknown
+            map_image[map_array == 0] = 255   # Free
+            map_image[map_array == 100] = 0   # Occupied
+            return map_image
+        return None
+
+    def save_map_wt_robot(self):
+        map_image = self.generate_map()
+        if map_image is not None:
+            # if self.odom is not None:
+            #     width = self.map_data.info.width
+            #     height = self.map_data.info.height
+            #     resolution = self.map_data.info.resolution
+            #     origin = self.map_data.info.origin
+
+            #     robot_x = int((self.odom[0] - origin.position.x) / resolution)
+            #     robot_y = height - int((self.odom[1] - origin.position.y) / resolution)
+                
+            #     # Draw a circle representing the robot's position on the map
+            #     cv2.circle(map_image, (robot_x, robot_y), 5, (0, 0, 255), -1)
+
+            # Save the map image with the robot's position
+            map_file_name = os.path.join(self.save_map_folder, f"map_wt_robot_{self.current_time}")
+            image_path = f"{map_file_name}.pgm"
+            self.get_logger().info(str(type(map_image)))
+            self.get_logger().info(f'Saving map image {image_path}')
+            cv2.imwrite(image_path, map_image)
+            self.get_logger().info(f'Saved map image {image_path}')
+
+
+    def map_callback(self, msg):
+        # Store the latest map data
+        self.map_data = msg
+
+
     def get_latest_model(self):
         try:
             return pickle_load_model()
@@ -137,6 +215,7 @@ class DataSaver(Node):
                 'husarion_travelled_dist',
                 'visitable_nodes',
                 'travelled_distance',
+                'visited_cells',
                 'cpu_usage',
                 'ram_usage',
                 'ram_used_gb'
@@ -191,6 +270,10 @@ class DataSaver(Node):
             else:
                 row_data.extend([None])
 
+            if self.visited_cells:
+                row_data.extend([self.visited_cells])
+            else:
+                row_data.extend([None])
 
             if self.cpu:
                 row_data.extend([self.cpu])
@@ -208,6 +291,10 @@ class DataSaver(Node):
         #model = self.get_latest_model()
         self.record_memory_usage()
         self.save_csv_data()
+        if self.counter % 5 == 0:
+            self.save_map_wt_robot()
+        self.counter+=1
+
 
 def main(args=None):
     rclpy.init(args=args)

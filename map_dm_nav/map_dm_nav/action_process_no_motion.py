@@ -302,7 +302,7 @@ class AIFProcessServer(Node):
         self.execution_time += time.time() - start_execution_time
         self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
         elasped_time = time.time() - self.start_time
-        self.save_data_process(ob_id, ob_match_score, obstacle_dist_per_actions=obstacle_dist_per_actions, data= data)
+        self.save_data_process(ob_id, ob_match_score, obstacle_dist_per_actions=obstacle_dist_per_actions, elasped_time=elasped_time, data= data)
 
         self.prev_scans_dist = obstacle_dist_per_actions
         self.last_ob_id = ob_id
@@ -343,10 +343,9 @@ class AIFProcessServer(Node):
         pickle_dump_model(self.model, path)
 
     def save_data_process(self, ob_id:int, ob_match_score:list,\
-                      obstacle_dist_per_actions:list, data:dict=None):
+                      obstacle_dist_per_actions:list,elasped_time:float, data:dict=None):
 
         ob = self.Views.views[ob_id].full_ob
-        elapsed_time = 0
         if self.robot_pose is not None and len(self.robot_pose) >= 2 :
             robot_pose = self.robot_pose
         else:

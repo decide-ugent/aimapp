@@ -58,6 +58,7 @@ install(PROGRAMS
   simulation_tools/shift_husarion_odom.py
   simulation_tools/node_visualizer.py
   simulation_tools/save_data.py
+  simulation_tools/publish_path.py
 
   map_dm_nav/obs_transf/save_cam_in_folder.py
   
