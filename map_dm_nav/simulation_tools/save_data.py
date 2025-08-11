@@ -5,6 +5,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from nav_msgs.msg import Odometry, OccupancyGrid
 from visualization_msgs.msg import MarkerArray
+
 from cv_bridge import CvBridge
 import cv2
 import os
@@ -13,6 +14,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import csv
 import psutil
+
+try:
+    from mocap4r2_msgs.msg import RigidBodies
+except :
+    print('mocap4r2_msgs to connect to qualisys bodies does not exist. Please install mocap4ros2_qualisys')
 
 from map_dm_nav.visualisation_tools import plot_state_in_map_wt_gt, pickle_load_model
 
@@ -35,7 +41,7 @@ class DataSaver(Node):
         #     10
         # )
 
-        self.gt_odom_sub = self.create_subscription(
+        self.odom_sub = self.create_subscription(
             Odometry,
             '/odometry/filtered',
             self.sensor_odom_callback,
@@ -55,7 +61,11 @@ class DataSaver(Node):
             10
         )
 
-
+        self.gt_odom_sub = self.create_subscription(
+            RigidBodies,
+            '/rigid_bodies',
+            self.mocap_odom_callback,
+            10)
         
         # self.subscription2 = self.create_subscription(
         #     Image,
@@ -83,6 +93,7 @@ class DataSaver(Node):
         self.map_data = None
         self.odom= None
         self.husarion_odom = None
+        self.gt_odom = None
         self.visitable_nodes = {}
         self.visited_cells = None
         self.travelled_dist  = 0
@@ -90,6 +101,12 @@ class DataSaver(Node):
 
         self.cpu = None
         self.ram = None
+
+
+        self.husarion_odom_list = []
+        self.odom_list = []
+        self.gt_odom_list = []
+        self.fig = plt.figure(figsize=(10, 8))
 
 
     def odom_callback(self, msg):
@@ -106,6 +123,11 @@ class DataSaver(Node):
             self.current_time = self.start_time 
         current_time = abs(msg.header.stamp.sec)#*(1/10**9)
         self.current_time = current_time - self.start_time 
+
+    def mocap_odom_callback(self, msg):
+        last_body = msg.rigidbodies[49]
+        self.gt_odom = (np.round(last_body.pose.position.x,2),  np.round(last_body.pose.position.y,2))
+        # self.get_logger().info(f'self.gt_odom {self.gt_odom}')
 
     def sensor_odom_callback(self, msg):
         # Process the sensor odometry data
@@ -212,6 +234,7 @@ class DataSaver(Node):
                 "Time", 
                 "odom", 
                 "husarion_odom",
+                "gt_odom",
                 'husarion_travelled_dist',
                 'visitable_nodes',
                 'travelled_distance',
@@ -247,14 +270,24 @@ class DataSaver(Node):
             # Odometry data
             if self.odom:
                 row_data.extend([self.odom])
+                self.odom_list.append(self.odom)
             else:
                 row_data.extend([None])
             #sensors odom
             if self.husarion_odom:
                 row_data.extend([self.husarion_odom])
+                self.husarion_odom_list.append(self.husarion_odom)
             else:
                 row_data.extend([None])
-            
+
+            #GT odom
+            if self.gt_odom:
+                row_data.extend([self.gt_odom])
+                self.gt_odom_list.append(self.gt_odom)
+            else:
+                row_data.extend([None])
+
+
             if self.husarion_travelled_dist:
                 row_data.extend([self.husarion_travelled_dist])
             else:
@@ -293,8 +326,21 @@ class DataSaver(Node):
         self.save_csv_data()
         if self.counter % 5 == 0:
             self.save_map_wt_robot()
+            self.plot_odom()
         self.counter+=1
 
+    def plot_odom(self):
+        i = 0
+        
+        colours  = ['blue', 'red', 'green']
+        labels = ['model odom', 'robot odom', 'gt odom']
+        for odom_data in [self.odom_list, self.husarion_odom_list, self.gt_odom_list]:
+            if len(odom_data) > 0:
+                x_data = np.array([coord[0] - odom_data[0][0] for coord in odom_data])
+                y_data = np.array([coord[1] - odom_data[0][1] for coord in odom_data])
+                self.fig.plot(x_data, y_data, color=colours[i], lw=2, label=labels[i])
+            i+=1
+        self.fig.canvas.draw()
 
 def main(args=None):
     rclpy.init(args=args)
