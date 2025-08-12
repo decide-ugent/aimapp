@@ -191,6 +191,10 @@ self.c_param = 5               # Exploration parameter for MCTS
 
 **To modify these, change the values in the class where they are set.**
 
+It is also possible to have MCTS returns a full policy instead of an action by modifying directly in the method parameters `start_mcts` the variable `num_steps`, currently set to 1. 
+Be sure to adapt the code in consequence as  this feature has never been actually tested. Using a full policy based on current believes without updating it with newly collected evidence might not lead to the desired objective and was therefore never privilegied. 
+A big issue with that is the dilution of certainty about its position/state as we go further and further away from current position/state. 
+
 
 ### 3. Sensory process and motion process
 
