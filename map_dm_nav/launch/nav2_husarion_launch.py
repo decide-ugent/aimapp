@@ -15,9 +15,6 @@ def generate_launch_description():
     params_file = LaunchConfiguration('params_file')
     use_sim_time = LaunchConfiguration('use_sim_time')
 
-    x_shift = LaunchConfiguration('x', default=0.0)
-    y_shift = LaunchConfiguration('y', default=0.0)
-
     declare_map_yaml_cmd = DeclareLaunchArgument(
         'map',
         default_value=PathJoinSubstitution([FindPackageShare("map_dm_nav"), "params", "warehouse_world.yaml"]),
@@ -44,12 +41,11 @@ def generate_launch_description():
         }.items(),
     )
 
-    
     odom_shifted = Node(
             package='map_dm_nav',
             executable='shift_husarion_odom.py',
             # namespace='agent',
-            arguments=['-x',x_shift, '-y',y_shift]
+            output='screen',
         )
 
     return LaunchDescription(
@@ -58,6 +54,6 @@ def generate_launch_description():
             declare_params_file_cmd,
             declare_use_sim_time_cmd,
             nav2_bringup_launch,
-            odom_shifted
+            # odom_shifted
         ]
     )

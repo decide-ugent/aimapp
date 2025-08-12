@@ -292,7 +292,7 @@ class MCTS:
             # q_pi, best_action = self.model_interface.infer_policy_over_actions(children_G, current.possible_actions, action_selection='stochastic', alpha=1.0)
             # current = current.childs[best_action]
         if logging:
-            logging.info(f"--- Selection Phase End (Selected Node: {current.id}) ---")
+            logging.debug(f"--- Selection Phase End (Selected Node: {current.id}) ---")
         self.parent_list.append(current.id)
         return current
 
@@ -554,19 +554,19 @@ class MCTS:
     
         children_info = [('a', a, 'child id',c.id,'N',c.N,'T', round(c.total_reward,2),'efe_av', round(c.get_averaged_reward(),2)) for a,c in root_node.childs.items()]
         if logging :
-            logging.info(f"Root node children stats: {children_info}")
+            logging.debug(f"Root node children stats: {children_info}")
         # logging.debug(f"=== Finished MCTS Simulation ===")
 
     def plan(self, root_node:object, num_simulations:int, max_rollout_depth:int, data:dict=None, logging=None)-> int: #dict
         """Runs the MCTS planning process for a given number of simulations."""
         if logging:
-            logging.info(f"Starting MCTS planning from root node {root_node.id} for {num_simulations} simulations.")
+            logging.debug(f"Starting MCTS planning from root node {root_node.id} for {num_simulations} simulations.")
 
         self.tree_table = {}
         for i in range(num_simulations):
             # print()
             if logging:
-                logging.info(f"--- Simulation {i+1}/{num_simulations} ---")
+                logging.debug(f"--- Simulation {i+1}/{num_simulations} ---")
             self.run_simulation(root_node, max_rollout_depth, logging)
 
         # After simulations, determine the best action from the root

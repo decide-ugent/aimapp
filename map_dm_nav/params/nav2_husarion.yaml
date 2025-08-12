@@ -80,9 +80,9 @@ behavior_server:
     robot_base_frame: base_link
     transform_timeout: 0.1
     simulate_ahead_time: 2.0
-    max_rotational_vel: 1.0
-    min_rotational_vel: 0.4
-    rotational_acc_lim: 3.2
+    max_rotational_vel: 0.60
+    min_rotational_vel: 0.1
+    rotational_acc_lim: 1.2
 
 bt_navigator:
   ros__parameters:
@@ -182,8 +182,8 @@ controller_server:
       # it is only used when rotating to heading (use_rotate_to_heading)
       # for some reason rotate_to_heading_angular_vel is ignored and robot rotates with
       # max_angular_accel/10. angular velocity (that's why it is set to higher value)
-      max_angular_accel: 5.0
-      rotate_to_heading_angular_vel: 1.5
+      max_angular_accel: 1.0
+      rotate_to_heading_angular_vel: 0.8
       max_robot_pose_search_dist: 10.0
       use_interpolation: true
 
@@ -216,7 +216,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
-        inflation_radius: 0.4
+        inflation_radius: 0.25
         cost_scaling_factor: 3.0
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -266,7 +266,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
-        inflation_radius: 0.4
+        inflation_radius: 0.25
         cost_scaling_factor: 3.0
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"

@@ -1,6 +1,6 @@
 int32 action
-bool success
----
+bool goal_reached
 ---
 int32[] possible_actions
 geometry_msgs/Point[] reachable_goals
+---

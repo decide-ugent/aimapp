@@ -64,7 +64,7 @@ class NodeVisualizer(Node):
         
         # Model data storage
         self.current_model = None
-        self.tests_directory = "/home/idlab332/workspace/ros_ws/tests" #get_save_data_dir(
+        self.tests_directory = "/home/husarion/ros2_ws/tests" #get_save_data_dir(
         # self.get_logger().info(f"Checking for models in: {self.tests_directory}")
         self.last_model_timestamp = 0
         

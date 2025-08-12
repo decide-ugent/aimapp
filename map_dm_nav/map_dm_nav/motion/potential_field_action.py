@@ -185,7 +185,7 @@ class PotentialFieldAction(Node):
         y_r = 0.0000001
         if self.V_repulsion is None:
             self.get_logger().info("we got a scan")
-
+            
         if self.tf_theta is None:
             theta_offset = 0.0
         else:
@@ -194,7 +194,7 @@ class PotentialFieldAction(Node):
         self.V_repulsion = [x_r,y_r]
         if isinstance(self.robot_theta,np.ndarray) and len(self.robot_theta)== 0:
             return
-        self.get_logger().info(' ')
+        # self.get_logger().info(' ')
         for i in range(scan_range): 
             angle = angle_min + step * i + self.robot_theta + theta_offset # Calculate the absolute angle of the scan point
 
@@ -260,12 +260,12 @@ class PotentialFieldAction(Node):
             y_final = V_attraction[1] + self.V_repulsion[1]
             
             self.publish_vector(x_final, y_final, self.apf_final)
-            angle_target = np.arctan2(y_final, x_final)
-            angle_delta = angle_target - self.robot_theta
+            angle_target = normalise_angle(np.arctan2(y_final, x_final))
+            angle_delta = angle_target - normalise_angle(self.robot_theta)
             # print('angle_delta before normalisation:', angle_delta)
             angle_delta = normalise_angle(angle_delta)
 
-            #self.get_logger().info("angle to goal: %f, distance to goal: %f" % (angle_delta, self.delta_distance))
+            self.get_logger().info("angle to goal: %f, angle_target %f angle robot: %f" % (angle_delta,angle_target, normalise_angle(self.robot_theta)))
             feedback_msg.dist_to_goal = self.delta_distance
             goal_handle.publish_feedback(feedback_msg)
             

@@ -50,6 +50,7 @@ class HighLevelNav_ROSInterface(Node):
         self.model = None
         #====== VISUALISATION PARAMS =====#
         
+        self.start_time = time.time()
         self.gt_odom = [0,0,0]
         self.store_dir = None
         self.start_time = time.time()

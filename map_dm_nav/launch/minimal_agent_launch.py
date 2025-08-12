@@ -7,6 +7,8 @@ DESKTOP_RESULTS_FOLDER=os.getcwd()
 
 def generate_launch_description():
     ld =  LaunchDescription()
+
+    test_id = LaunchConfiguration('test_id', default='None')
     
     panorama_360_action = Node(
             package='map_dm_nav',
@@ -14,7 +16,7 @@ def generate_launch_description():
             executable='get_360_camera_action.py',
             remappings=[
                 ('/odom','/odometry/filtered'),
-                ('/scan', '/scan'),
+                ('/scan', '/scan_filtered'),
             ]
         )
     
@@ -22,7 +24,12 @@ def generate_launch_description():
     aif_process = Node(
             package='map_dm_nav',
             executable='action_process_no_motion.py',
+            arguments=['-test_id',test_id]
             # namespace='agent',
+            # remappings=[
+            #     ('/odom','/odometry/filtered'),
+            #     ('/scan', '/scan'),
+            # ]
         )
 
     ld.add_action(aif_process)

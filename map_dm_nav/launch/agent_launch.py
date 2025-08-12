@@ -34,14 +34,13 @@ def generate_launch_description():
     panorama_360_action = Node(
             package='map_dm_nav',
             namespace='agent',
-            executable='get_360_camera_remote_action.py',
+            executable='get_360_camera_action.py', #'get_360_camera_remote_action.py
             remappings=[
                 ('/agent/odom','/odometry/filtered'),
                 ('/agent/scan', '/scan_filtered'),
             ]
         )
-
-
+    
 
     potential_flied_action = Node(
             package='map_dm_nav',
@@ -49,14 +48,26 @@ def generate_launch_description():
             namespace='agent',
             remappings=[
                 ('/agent/cmd_vel','/cmd_vel'),
-                ('/agent/odom','/odometry/filtered'),
-                ('/agent/scan','/scan_filtered'),
+                ('/agent/odometry/filtered','/odometry/filtered'),
+                ('/agent/scan_filtered','/scan_filtered'),
+            ]
+        )
+    
+    move_straight_action = Node(
+            package='map_dm_nav',
+            executable='move_straight_action.py',
+            namespace='agent',
+            remappings=[
+                ('/agent/cmd_vel','/cmd_vel'),
+                ('/agent/odometry/filtered','/odometry/filtered'),
+                # ('/agent/scan_filtered','/scan_filtered'),
             ]
         )
 
     ld.add_action(agent_node)
     # ld.add_action(panorama_action)
     # ld.add_action(potential_flied_action)
+    # ld.add_action(move_straight_action)
     ld.add_action(panorama_360_action)
     # ld.add_action(rosbag)
     return ld

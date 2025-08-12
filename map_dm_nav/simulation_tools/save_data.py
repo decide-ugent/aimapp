@@ -103,12 +103,6 @@ class DataSaver(Node):
         self.ram = None
 
 
-        self.husarion_odom_list = []
-        self.odom_list = []
-        self.gt_odom_list = []
-        self.fig = plt.figure(figsize=(10, 8))
-
-
     def odom_callback(self, msg):
 
         robot_x = np.round(msg.pose.pose.position.x,2)
@@ -125,9 +119,9 @@ class DataSaver(Node):
         self.current_time = current_time - self.start_time 
 
     def mocap_odom_callback(self, msg):
-        last_body = msg.rigidbodies[49]
+        last_body = msg.rigidbodies[-1]
         self.gt_odom = (np.round(last_body.pose.position.x,2),  np.round(last_body.pose.position.y,2))
-        # self.get_logger().info(f'self.gt_odom {self.gt_odom}')
+
 
     def sensor_odom_callback(self, msg):
         # Process the sensor odometry data
@@ -270,20 +264,17 @@ class DataSaver(Node):
             # Odometry data
             if self.odom:
                 row_data.extend([self.odom])
-                self.odom_list.append(self.odom)
             else:
                 row_data.extend([None])
             #sensors odom
             if self.husarion_odom:
                 row_data.extend([self.husarion_odom])
-                self.husarion_odom_list.append(self.husarion_odom)
             else:
                 row_data.extend([None])
 
             #GT odom
             if self.gt_odom:
                 row_data.extend([self.gt_odom])
-                self.gt_odom_list.append(self.gt_odom)
             else:
                 row_data.extend([None])
 
@@ -326,21 +317,8 @@ class DataSaver(Node):
         self.save_csv_data()
         if self.counter % 5 == 0:
             self.save_map_wt_robot()
-            self.plot_odom()
         self.counter+=1
 
-    def plot_odom(self):
-        i = 0
-        
-        colours  = ['blue', 'red', 'green']
-        labels = ['model odom', 'robot odom', 'gt odom']
-        for odom_data in [self.odom_list, self.husarion_odom_list, self.gt_odom_list]:
-            if len(odom_data) > 0:
-                x_data = np.array([coord[0] - odom_data[0][0] for coord in odom_data])
-                y_data = np.array([coord[1] - odom_data[0][1] for coord in odom_data])
-                self.fig.plot(x_data, y_data, color=colours[i], lw=2, label=labels[i])
-            i+=1
-        self.fig.canvas.draw()
 
 def main(args=None):
     rclpy.init(args=args)

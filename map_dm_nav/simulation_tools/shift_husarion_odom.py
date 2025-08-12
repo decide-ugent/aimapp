@@ -7,7 +7,7 @@ import sys
 class OdomShiftNode(Node):
     def __init__(self, shift_x: float, shift_y: float):
         super().__init__('odom_shift_node')
-        self.shift = (shift_x, shift_y)
+        self.shift = [shift_x, shift_y]
 
         self.sub = self.create_subscription(
             Odometry,

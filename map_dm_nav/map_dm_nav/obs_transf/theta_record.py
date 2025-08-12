@@ -119,7 +119,7 @@ def show_reduced_image(image):
  
 def main():
     print('start')
-    images_dir = "/home/idlab332/theta_ricoh_x/images"
+    images_dir = "/home/husarion/Pictures/theta_ricoh_x"
     kill_gphoto2_processes()
     capture_image(images_dir, iteration=0)
 

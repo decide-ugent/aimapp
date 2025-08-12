@@ -92,9 +92,14 @@ class AIFProcessServer(Node):
             self.last_ob_id = ob_id
             self.prev_scans_dist = obstacle_dist_per_actions
 
+
+        #NOTE: BE WARY OF NEXT PART, WE RESET START POSE TO (0,0) Maybe we want NONE instead.
         else:
             self.test_folder = get_data_dir(None, test_id)
             self.load_latest_model()
+            #If we want another folder created, else it continues previous folder
+            # folder = str(self.test_folder)[:-1]
+            # self.test_folder = Path(folder + str(int(test_id)+1))
             self.model.reset(start_pose=(0.0,0.0))
             self.model.PoseMemory.reset_odom([0.0,0.0])
             obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(len(self.model.get_possible_actions()))
@@ -119,10 +124,8 @@ class AIFProcessServer(Node):
         for a in next_possible_actions:
             next_pose, next_pose_id = self.model.determine_next_pose(a)
             pt = Point()
-            next_pose[0] = float(next_pose[0])
-            next_pose[1] = float(next_pose[1])
-            pt.x = next_pose[0]
-            pt.y = next_pose[1]
+            pt.x = float(next_pose[0])
+            pt.y = float(next_pose[1])
             reachable_points.append(pt)
             self.publish_vector(next_pose[0], next_pose[1], self.actions_pub[a])
             self.get_logger().info('possible action %d poses %s' % (a, str(next_pose)))
