@@ -454,7 +454,6 @@ class MCTS:
         # logging.debug(f"--- Rollout Phase End (Node: {start_node.id}, Total Rollout G: {cumulative_G:.3f}) ---")
         return cumulative_G / depth
     
-
     def _minimal_rollout(self, start_node:object,max_depth:int)->float:
         """
         Phase 3: Simulation (Rollout) - Simulate a trajectory from the start_node

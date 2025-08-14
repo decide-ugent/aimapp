@@ -41,8 +41,9 @@ class PoseMemory(object):
             return self.poses[id]
         except IndexError:
             return None
-    
-    def pose_to_id(self, pose:list=None, odom:list=None, save_in_memory:bool = True) -> int:
+    def nothing(self):
+        pass
+    def pose_to_id(self, pose:list=None, odom:list=None, save_in_memory:bool = True, influence_radius:float=None) -> int:
         """
         return the position id from memory. 
         Evaluate if the given pose is in action range of other memorised poses 
@@ -52,6 +53,7 @@ class PoseMemory(object):
             pose (list): the pose we want to evaluate from memory
             odom(list,optional): the point we use as reference to consider id.
             save_in_memory (bool, optional): Do we want to save this pose in memory? 
+            influence_radius (float, optional): Do we want to use a specific influence radius to search if the pose already exists?
 
         Returns:
             int: The pose id, -1 if none in memory and we don't want to remember this new pose
@@ -71,7 +73,10 @@ class PoseMemory(object):
         zone_action = self.possible_actions[0]
         p_idx = -1
         
-        ref_closest_dist = self.influence_radius 
+        if influence_radius is None:
+            ref_closest_dist = self.influence_radius 
+        else:
+            ref_closest_dist = influence_radius
         angle_pose_to_curr_pose = clip_rad_360(np.arctan2(pose[1]- odom[1], pose[0]- odom[0]))
         for ref_p_idx, p in enumerate(self.poses):
             # print('_____')
@@ -101,7 +106,7 @@ class PoseOdometry(PoseMemory):
     ''' Use pose for Odometry '''
 
     def __init__(self,possible_actions:dict, influence_radius:float=0.5, robot_dim:float=0.3):
-        super(PoseOdometry, self).__init__(possible_actions, influence_radius)
+        super(PoseOdometry, self).__init__(possible_actions, influence_radius, robot_dim)
         ''' TODO: CONSIDER DT'''
         self.latest = None 
 
