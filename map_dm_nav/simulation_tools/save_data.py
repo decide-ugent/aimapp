@@ -3,6 +3,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
+from std_msgs.msg import Float32
 from nav_msgs.msg import Odometry, OccupancyGrid
 from visualization_msgs.msg import MarkerArray
 
@@ -33,14 +34,6 @@ class DataSaver(Node):
             10
         )
 
-
-        # self.gt_odom_sub = self.create_subscription(
-        #     Odometry,
-        #     '/gazebo/odom',
-        #     self.real_odom_callback,
-        #     10
-        # )
-
         self.odom_sub = self.create_subscription(
             Odometry,
             '/odometry/filtered',
@@ -67,13 +60,29 @@ class DataSaver(Node):
             self.mocap_odom_callback,
             10)
         
-        # self.subscription2 = self.create_subscription(
-        #     Image,
-        #     '/internal_map',  
-        #     self.map_callback,
-        #     10
-        # )
+        self.cpu_per = self.create_subscription(
+            Float32,
+            '/cpu_percent',  
+            self.cpu_callback,
+            10
+        )
 
+        self.ram_perc_pub = self.create_subscription(
+            Float32,
+            '/ram_percent',
+            self.ram_perc_callback,
+            10
+        )
+
+        self.ram_used_pub = self.create_subscription(
+            Float32,
+            '/ram_used',
+            self.ram_used_callback,
+            10
+        )
+
+
+        
         experiment = 'ours'
         self.csv_file_path = experiment+'/records.csv'
         self.save_map_folder = experiment+ '/map'
@@ -101,6 +110,9 @@ class DataSaver(Node):
 
         self.cpu = None
         self.ram = None
+        self.cpu = None
+        self.ram_per = None
+        self.ram_used = None
 
 
     def odom_callback(self, msg):
@@ -112,14 +124,14 @@ class DataSaver(Node):
             self.travelled_dist += travelled_distance
         self.odom = (robot_x, robot_y)
         
-        if self.start_time is None:
-            self.start_time = abs(msg.header.stamp.sec)#*(1/10**9)
-            self.current_time = self.start_time 
-        current_time = abs(msg.header.stamp.sec)#*(1/10**9)
-        self.current_time = current_time - self.start_time 
+        # if self.start_time is None:
+        #     self.start_time = abs(msg.header.stamp.sec)#*(1/10**9)
+        #     self.current_time = self.start_time 
+        # current_time = abs(msg.header.stamp.sec)#*(1/10**9)
+        # self.current_time = current_time - self.start_time 
 
     def mocap_odom_callback(self, msg):
-        last_body = msg.rigidbodies[-1]
+        last_body = msg.rigidbodies[49]
         self.gt_odom = (np.round(last_body.pose.position.x,2),  np.round(last_body.pose.position.y,2))
 
 
@@ -131,6 +143,12 @@ class DataSaver(Node):
             husarion_travelled_distance = np.sqrt((robot_x - self.husarion_odom[0])**2 + (robot_y - self.husarion_odom[1])**2)
             self.husarion_travelled_dist += husarion_travelled_distance
         self.husarion_odom = (robot_x, robot_y)
+
+        if self.start_time is None:
+            self.start_time = abs(msg.header.stamp.sec)#*(1/10**9)
+            self.current_time = self.start_time 
+        current_time = abs(msg.header.stamp.sec)#*(1/10**9)
+        self.current_time = current_time - self.start_time 
         
     def visitable_nodes_callback(self, marker_array_msg):
         # Process the visitable nodes if needed
@@ -147,7 +165,14 @@ class DataSaver(Node):
             z = node_marker.pose.position.z
             observation = int(text_splitted[1][1:])
             self.visitable_nodes[state] = {'pose': (x, y, z), 'observation': observation}
+    def cpu_callback(self, msg):
+        self.cpu = float(msg.data)
 
+    def ram_perc_callback(self, msg):
+        self.ram_per = float(msg.data)
+
+    def ram_used_callback(self, msg):
+        self.ram_used = float(msg.data)
     def save_map(self):
         # Save the map only if we have received it
         if self.map_data is None:
@@ -301,10 +326,14 @@ class DataSaver(Node):
 
             if self.cpu:
                 row_data.extend([self.cpu])
+            elif self.cpu_per:
+                row_data.extend([self.cpu_per])
             else:
                 row_data.extend([None])
             if self.ram:
                 row_data.extend([self.ram.percent, round(self.ram.used / 1e9, 2)])
+            elif self.ram_per and self.ram_used:
+                row_data.extend([self.ram_per, self.ram_used])
             else:
                 row_data.extend([None, None])
             # Write the row to the CSV
@@ -313,9 +342,10 @@ class DataSaver(Node):
 
     def save_data(self):
         #model = self.get_latest_model()
-        self.record_memory_usage()
+        #self.record_memory_usage()
         self.save_csv_data()
         if self.counter % 5 == 0:
+            self.get_logger().info(f'self.gt_odom {self.gt_odom}')
             self.save_map_wt_robot()
         self.counter+=1
 
