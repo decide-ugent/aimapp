@@ -10,8 +10,8 @@ It requires ubuntu 22.04 and ros2 humble or is configured to run inside a Docker
 [Docker](##Docker)  
 [Locally](##Locally)  
 [Start the project](##Start-the-project)  
-[Modifying Agent and MCTS Parameters ](##Modifying-Agent-and-MCTS-Parameters)
-
+[Modifying Agent and MCTS Parameters](##Modifying-Agent-and-MCTS-Parameters)  
+[Extra Features](##Extra-Features)
 
 
 <!-- <a name="Overview"/> -->
@@ -246,3 +246,19 @@ float64 dist_to_goal
 ```
 
 The model uses the boolean to know if we reached the pose and determine using pose wether the distance is acceptable or not (based on `robot_dim` and states `influence_radius` variables). 
+
+
+## Extra Features <a name="Extra-Features"></a> 
+
+### Inserting pose manually in map 
+
+You can inject a new state into the map if you know the desired pose and the states it should be connected to. For example:
+```bash
+ros2 topic pub -r 10 /new_state map_dm_nav_actions/msg/NewState "{pose: [-0.0,-0.20], connecting_states: [0], influence_radius: 0.1"} 
+```
+`connecting_states` is optional. If empty list, the new state will be created without explicit links.
+
+`influence_radius `defines the minimum distance required to create a new state. If an existing state already lies within this radius (e.g., 0.1 m in the example above), no new state will be added. It is recommended to keep this value small.
+
+The callback handling this message is processed before executing the next action.
+Each new pose can only be inserted once.
