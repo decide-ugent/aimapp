@@ -9,12 +9,17 @@ from geometry_msgs.msg import Point
 import time
 from cv_bridge import CvBridge
 import cv2
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+import threading
+from rclpy.executors import MultiThreadedExecutor
 
 from map_dm_nav.motion.potential_field_client import PFClient
 from map_dm_nav.motion.nav2_client import Nav2Client
 from map_dm_nav.obs_transf.get_pano_multiple_camera_client import PanoramaMultipleCamClient
 from map_dm_nav.obs_transf.observation_match import ViewMemory
 from map_dm_nav.model.V5 import Ours_V5_RW
+
+from map_dm_nav_actions.msg import NewState
 #visualisations
 from map_dm_nav.visualisation_tools import create_save_data_dir, save_failed_step_data, remove_white_border,\
                                                     save_step_data, save_efe_plot,pickle_load_model, pickle_dump_model, save_pose_data
@@ -38,8 +43,8 @@ class HighLevelNav_ROSInterface(Node):
         self.panorama_client = PanoramaMultipleCamClient()
 
   
-        self.motion_client = Nav2Client()
-        # self.motion_client = PFClient()
+        #self.motion_client = Nav2Client()
+        self.motion_client = PFClient()
 
         self.img_bridge = CvBridge()
         self.panorama_results = None
@@ -55,11 +60,35 @@ class HighLevelNav_ROSInterface(Node):
             topic="/believed_odom",
             qos_profile=5)
         
+
+        self.add_new_pose, self.connect_to_states, self.added_node_influence_radius = None, None, None
+        latest_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+        self.check_new_node = self.create_subscription(
+           NewState,
+           "/new_state", 
+           self.new_state_callback, 
+           latest_qos)
+        
+    
+
     #==== VISUALISATION CALLBACK ====#
 
     def save_model(self):
         ''' create map, transform to cv2, transform to ros msg, publish'''
         pickle_dump_model(self.model)
+
+    def new_state_callback(self, msg):
+        self.get_logger().info(f"pose:{msg.pose}, connecting states:{msg.connecting_states}")
+        self.add_new_pose = list(msg.pose)
+        self.connect_to_states= list(msg.connecting_states) 
+        self.added_node_influence_radius = float(msg.influence_radius)
+        
+        #self.get_logger().info(f"pose detail{len(msg.pose)}, {type(msg.pose)},{type(msg.pose[0])} {list(msg.pose)}")
+
        
     #==== INITIALISATION METHODS ====#
 
@@ -299,6 +328,15 @@ class HighLevelNav_ROSInterface(Node):
             self.get_logger().info('certainty about the state at step %s, believed pose: %s' % (str(self.model.get_current_timestep()), str(current_pose)))         
             self.publish_believed_odom.publish(pose)
 
+
+    #==== INJECT NODE METHOD ====#
+    def add_new_state_in_model(self):
+        
+        if self.add_new_pose is not None:
+            self.get_logger().warn(f'We received new state to add at pose {self.add_new_pose}, it will be added only once')
+            #In the method we are checking if the pose is new or not, if not new no transition update.
+            self.model.inject_new_node_given_pose_and_linked_states(new_pose = self.add_new_pose, connected_states=self.connect_to_states, influence_radius=self.added_node_influence_radius, logs=self.get_logger())
+
 def save_data_process(highlevelnav:object, ob_id:int, ob_match_score:list,\
                       obstacle_dist_per_actions:list, store_dir, data:dict=None):
 
@@ -334,6 +372,15 @@ def main(args=None):
     goal_path = sys.argv[4] if len(sys.argv) > 4 else 'None'
     
     highlevelnav = HighLevelNav_ROSInterface(model_dir, goal_path)
+
+    executor = MultiThreadedExecutor()
+
+    executor.add_node(highlevelnav)
+    if isinstance(getattr(highlevelnav, "motion_client", None), Node):
+        executor.add_node(highlevelnav.motion_client)
+    if isinstance(getattr(highlevelnav, "panorama_client", None), Node):
+        executor.add_node(highlevelnav.panorama_client)
+    threading.Thread(target=executor.spin, daemon=True).start()
    
     store_dir = create_save_data_dir()
     highlevelnav.store_dir = store_dir
@@ -356,20 +403,26 @@ def main(args=None):
     # And we can't have the set_initial_pose called too early else it will not publish. Don't ask me why, ask my pillow
     motion_initial_pose = getattr(highlevelnav.motion_client, "set_initial_pose", None)
     if callable(motion_initial_pose):
-        rclpy.spin_once(highlevelnav.motion_client, timeout_sec=2)
+        #rclpy.spin_once(highlevelnav.motion_client, timeout_sec=2)
         highlevelnav.motion_client.set_initial_pose()
 
 
     obstacle_dist_per_actions,ob_id, ob_match_score = highlevelnav.initialise_model(possible_actions)
 
     highlevelnav.set_navigation_mode()
+    
     save_data_process(highlevelnav, ob_id=ob_id, ob_match_score= ob_match_score, obstacle_dist_per_actions= obstacle_dist_per_actions, store_dir=store_dir)
     
     """
     ** RUN MODEL **
     """
     for action in policy:
-    
+        #To get the subscriber data
+        rclpy.spin_once(highlevelnav, timeout_sec=0.5)
+        highlevelnav.get_logger().warn('HERERHEREHEREHREHRE')
+        highlevelnav.add_new_state_in_model()
+        highlevelnav.get_logger().warn('HERERHEREHEREHREHRE')
+        
         action, action_data = highlevelnav.define_next_objective(action, ob_id, obstacle_dist_per_actions)
 
         #highlevelnav.get_logger().info('checking the action %f, %s' % (action, str(type(action))))

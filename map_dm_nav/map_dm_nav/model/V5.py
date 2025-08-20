@@ -383,6 +383,7 @@ class Ours_V5_RW(Agent):
         observations = kwargs.get('observations', None)
         next_possible_actions = kwargs.get('next_possible_actions', None)
         plot_MCTS_tree = kwargs.get('plot_MCTS_tree', False)
+        save_action_memory = kwargs.get('save_action_memory', True)
 
         #If we are not inferring state at each state during the model update, we do it here
         if observations is not None and self.current_pose is None:
@@ -412,9 +413,11 @@ class Ours_V5_RW(Agent):
         self.q_pi = data['qpi'][0]
         self.G = data['efe'][0]
 
+        if save_action_memory:
         #NOTE: THIS CONSIDER THAT WE APPLY FIRST ACTION OF POLICY. MIGHT LEADS TO ISSUE DEPENDING ON HOW WE USE THAT
-        self.action = np.array([best_actions[0]])
-        self.step_time()
+            self.action = np.array([best_actions[0]])
+            self.step_time()
+
         
         return best_actions[:num_steps], data
     
@@ -782,6 +785,86 @@ class Ours_V5_RW(Agent):
 
         return H
     
+    #==== INJECT NEW STATE IN MODEL ====#
+
+    def inject_new_node_given_pose_and_linked_states(self, new_pose,connected_states, influence_radius=0.1, logs=None):
+        '''
+        Inserts a new node (pose and corresponding state) into the model and updates
+        transitions with the provided linked (junction) states (and no others).
+
+        This method is used to expand the model's internal graph of poses and states:
+        - A new pose is registered in PoseMemory (even if nearby poses exist, unless
+        within given `influence_radius`).
+        - The model dimensions (A, B, C, qs) are updated to account for the new state.
+        - A new state belief distribution (qs) is created for the new pose.
+        - The mapping between the agent's pose and its corresponding state(s) is updated.
+        - Transitions are added both ways between the new state and the provided
+        `connected_states`, based on geometric relations (angles, actions).
+        - Existing self-transitions for linked states are reduced in probability
+        to encourage movement towards the new state.
+
+        Args:
+            new_pose (tuple, list or np.ndarray): The (x, y) position of the new pose to inject.
+            connected_states (list[int]): List of state indices to which the new state should be connected.
+            influence_radius (float, optional): Minimum distance threshold (in meters)
+                below which an existing pose is reused instead of creating a new one.
+                Default is 0.1m.
+        '''
+        num_of_states = self.num_states[0]
+        #We want this new pose to be added, even if there are other poses in the model influence_radius. Basically if there are no poses at 10cm distance, we will create a new one.
+        new_pose = [round(new_pose[0],2), round(new_pose[1],2)] #make sure that we don't have a terrible value
+        new_pose_id = self.PoseMemory.pose_to_id(new_pose, odom = new_pose, save_in_memory=True, influence_radius=influence_radius)
+        if logs:
+            logs.info(f'new_pose_id {new_pose_id}')
+        #Make sure the model can accept a new state (nothing happens for known pose)
+        self.update_A_dim_given_pose(new_pose_id)
+        self.update_B_dim_given_A()
+        self.update_C_dim()
+        self.update_qs_dim()
+        # print('num of states', num_of_states, 'new num of states', self.num_states[0])
+        if num_of_states == self.num_states[0]:
+            if logs:
+                logs.info(f'There are no new node to add, so we are done here')
+            return
+        #update transitions between states
+        new_state_id = self.get_observation_most_likely_states(observations=[-1,new_pose_id], per_threshold=0.85)
+        new_state_qs = np.zeros(self.num_states)
+        for state in new_state_id:
+            new_state_qs[state] = 1.0
+        print('new state qs', new_state_qs)
+        self.update_agent_state_mapping(tuple(new_pose), [-1, new_pose_id], new_state_qs)
+        ## UPDATE TRANSITIONS
+        for state in connected_states:
+            state_qs = np.zeros(self.num_states)
+            state_qs[state] = 1.0
+            p_idx = -1
+            z_score = 5
+            #Cleaner way as it does not assume pose_id and state_id are the same
+            while p_idx == -1 and z_score >=0.5:
+                p_idx = self.get_current_most_likely_pose(z_score=z_score, qs=state_qs)
+                z_score -= 0.5
+            #If no correspondance found, we rely on pose_id == state_id as a failsafe
+            if p_idx == -1 :
+                p_idx = state
+            state_pose = self.PoseMemory.id_to_pose(p_idx)
+            print(p_idx,state_pose)
+            angle = angle_turn_from_pose_to_p(pose = state_pose, goal_pose= new_pose, in_deg=True)
+            action = self.determine_action_given_angle_deg(angle)
+            #check all correct
+            pose_in_action_range = self.PoseMemory.pose_in_action_range(action, new_pose, odom= state_pose)
+            if logs:
+                logs.info(f'angle from connected state {state} to new state{new_state_id} : {angle} action: {action}')
+            print('angle',angle, ' action', action,'pose_in_action_range', pose_in_action_range)
+            direct_lr_pB = 10
+            reverse_lr_pB = 10
+            self.update_transitions_both_ways([state_qs], [new_state_qs], action, direct_lr_pB=direct_lr_pB, reverse_lr_pB=reverse_lr_pB)
+            #reduce proba of going toward same state in that direction (if there was an obstacle at standard influence radius)
+            self.update_transitions_both_ways([state_qs], [state_qs], action, direct_lr_pB=-30, reverse_lr_pB=-30)
+            if 'STAY' in self.possible_actions.values():
+                stay_action = [key for key, value in self.possible_actions.items() if value == 'STAY'][0]
+                self.B[0] = set_stationary(self.B[0], stay_action)
+
+
     #==== OTHER METHODS ====#
 
     def determine_next_pose(self, action_id:int, pose:list=None,  min_dist_to_next_node:float=None):

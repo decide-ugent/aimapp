@@ -97,18 +97,18 @@ class Node:
         """Selects the child with the highest UCB1 score."""
         best_score = -float('inf')
         best_child = None
-        scores = []
+        # scores = []
         for action, child in self.childs.items():
             score = child.get_ucb1_score(c_param,use_utility, use_info_gain)
             # logging.info(f"  Child {child.id} (Action {action}) UCB1: {score:.2f}")
-            scores.append(score)
+            # scores.append(score)
             if score > best_score : # and child.id not in parent_list[1:]:
                 best_score = score
                 best_child = child
 
-        if best_child is None:
-            best_child_id = np.argmax(scores)
-            best_child = list(self.childs.values())[best_child_id]
+        # if best_child is None:
+        #     best_child_id = np.argmax(scores)
+        #     best_child = list(self.childs.values())[best_child_id]
         #logging.debug(f"Node {self.id}: Selected child {best_child.id if best_child else 'None'} with score {best_score:.2f}")
         return best_child
     
@@ -125,6 +125,7 @@ class Node:
         logging.debug(f"Detaching parent from node {self.id}")
         del self.parent
         self.parent = None
+
 
 # --- Model Interface Class ---
 class MCTS_Model_Interface:
@@ -291,11 +292,11 @@ class MCTS:
             # q_pi, best_action = self.model_interface.infer_policy_over_actions(children_G, current.possible_actions, action_selection='stochastic', alpha=1.0)
             # current = current.childs[best_action]
         if logging:
-            logging.info(f"--- Selection Phase End (Selected Node: {current.id}) ---")
+            logging.debug(f"--- Selection Phase End (Selected Node: {current.id}) ---")
         self.parent_list.append(current.id)
         return current
 
-    def _expand_node_in_all_possible_direction(self, node:object)->object:
+    def _expand_node_in_all_possible_direction(self, node:object, logging=None)->object:
         """Phase 2: Expansion - Add a new child node for an untried action."""
         
         if node.possible_actions is None :
@@ -355,7 +356,8 @@ class MCTS:
                 #     parent.total_reward = parent.total_reward + child_reward_G
 
             node.childs[action] = child_node
-            logging.info(f"from node {node.id} -> Child Node {child_node.id}, expanding with action {action}(Initial full={child_node.state_reward:.3f}, G={child_reward_G:.3f} H={child_H:.3f})")
+            if logging:
+                logging.debug(f"from node {node.id} -> Child Node {child_node.id}, expanding with action {action}(Initial full={child_node.state_reward:.3f}, G={child_reward_G:.3f} H={child_H:.3f})")
             # logging.debug(f"--- Expansion Phase End (Expanded Node: {child_node.id}) ---")
         return node # Return the newly expanded node
 
@@ -464,7 +466,7 @@ class MCTS:
         current_sim_qs = start_node.state_qs
         current_sim_pose_id = start_node.pose_id
         current_node = start_node
-        best_state_reward = -1000
+        best_state_reward = -float('inf')
 
         #for depth in range(max_depth):
         # 1. Get possible actions from the *current simulated pose*
@@ -501,7 +503,7 @@ class MCTS:
                 else:
                     current_node = None
         #SECURITY (should be useless)
-        if best_state_reward == -1000:
+        if best_state_reward == -float('inf'):
             best_state_reward = 0
         # logging.debug(f"--- Rollout Phase End (Node: {start_node.id}, Total Rollout G: {cumulative_G:.3f}) ---")
         return best_state_reward
@@ -530,11 +532,12 @@ class MCTS:
         # is_terminal = False # Placeholder - add condition if applicable
         # if not is_terminal:
         if not selected_node.is_fully_expanded():
-            selected_node = self._expand_node_in_all_possible_direction(selected_node)
+            selected_node = self._expand_node_in_all_possible_direction(selected_node, logging)
         else:
             # If fully expanded, the rollout starts from the selected node itself
             # This can happen if selection leads to an already expanded node
-            logging.debug(f"Selected node {selected_node.id} is fully expanded, starting rollout from here.")
+            if logging:
+                logging.debug(f"Selected node {selected_node.id} is fully expanded, starting rollout from here.")
             #pass
 
 
@@ -550,32 +553,34 @@ class MCTS:
         self._backpropagate(selected_node, reward)
     
         children_info = [('a', a, 'child id',c.id,'N',c.N,'T', round(c.total_reward,2),'efe_av', round(c.get_averaged_reward(),2)) for a,c in root_node.childs.items()]
-        logging.info(f"Root node children stats: {children_info}")
+        if logging :
+            logging.debug(f"Root node children stats: {children_info}")
         # logging.debug(f"=== Finished MCTS Simulation ===")
 
     def plan(self, root_node:object, num_simulations:int, max_rollout_depth:int, data:dict=None, logging=None)-> int: #dict
         """Runs the MCTS planning process for a given number of simulations."""
         if logging:
-            logging.info(f"Starting MCTS planning from root node {root_node.id} for {num_simulations} simulations.")
+            logging.debug(f"Starting MCTS planning from root node {root_node.id} for {num_simulations} simulations.")
 
         self.tree_table = {}
         for i in range(num_simulations):
             # print()
             if logging:
-                logging.info(f"--- Simulation {i+1}/{num_simulations} ---")
+                logging.debug(f"--- Simulation {i+1}/{num_simulations} ---")
             self.run_simulation(root_node, max_rollout_depth, logging)
 
         # After simulations, determine the best action from the root
-        best_action, q_pi_actions_values = self.get_best_action(root_node)
+        best_action, q_pi_actions_values = self.get_best_action(root_node, logging)
         data['qpi'].append(q_pi_actions_values[0])
         data['efe'].append(q_pi_actions_values[1])
 
         return best_action, data
 
-    def get_best_action(self, root_node:object)->int:
+    def get_best_action(self, root_node:object, logging)->int:
         """Selects the best action from the root node after simulations."""
         if not root_node.childs:
-            logging.warning("Root node has no children after simulations. Cannot determine best action.")
+            if logging:
+                logging.warning("Root node has no children after simulations. Cannot determine best action.")
             return None # Or a default action
 
         # Option 1: Choose the most visited child (robust)
@@ -595,20 +600,23 @@ class MCTS:
             action_values.append(avg_reward)
             available_actions.append(action)
             child_info.append(f"Action {action}: AvgR={avg_reward:.3f}, N={child.N}")
-        logging.info(f"Root node children stats: {'; '.join(child_info)}")
+        if logging:
+            logging.info(f"Root node children stats: {'; '.join(child_info)}")
 
         if len(available_actions)==0:
              logging.warning("No valid actions available from root node children.")
              return None, []
 
         q_pi, best_action_id = self.model_interface.infer_policy_over_actions(action_values, available_actions)
-        logging.info(f"action average G: {action_values}")
-        logging.info(f"softmax policies: {q_pi.round(2)}")
-        logging.info(f"Selected best action based on policy: {best_action_id}")
+        if logging:
+            logging.info(f"action average G: {action_values}")
+            logging.info(f"softmax policies: {q_pi.round(2)}")
+            logging.info(f"Selected best action based on policy: {best_action_id}")
         
         # Ensure the selected action is actually one of the children
         if best_action_id not in root_node.childs:
-             logging.error(f"Policy selected action {best_action_id} which is not a child of the root node. Available: {list(root_node.childs.keys())}. Falling back to most visited.")
+             if logging:
+                logging.error(f"Policy selected action {best_action_id} which is not a child of the root node. Available: {list(root_node.childs.keys())}. Falling back to most visited.")
              # Fallback to most visited
              if available_actions:
                 best_action_id = max(root_node.childs.keys(), key=lambda action: root_node.childs.get(action).N if root_node.childs.get(action) else -1)
@@ -618,6 +626,7 @@ class MCTS:
         full_action_values = [action_values[available_actions.index(a)] if a in available_actions else 0 for a in self.model_interface.get_possible_actions()]
         full_q_pi = [q_pi[available_actions.index(a)] if a in available_actions else 0 for a in self.model_interface.get_possible_actions()]
         return best_action_id, (full_q_pi, full_action_values)
+    
 # --- Utility Functions ---
 def plot_mcts_tree(root_node):
     """Visualises the Monte Carlo Tree Search (MCTS) tree."""
@@ -696,11 +705,11 @@ def pickle_load_model(store_path: str = None):
 # --- Main Execution ---
 if __name__ == "__main__":
     # --- Configuration ---
-    NUM_SIMULATIONS = 30  # Number of MCTS simulations per planning step
-    NUM_STEPS = 2      # Number of actions to take in the environment
+    NUM_SIMULATIONS = 50  # Number of MCTS simulations per planning step
+    NUM_STEPS = 1         # Number of actions to take in the environment
     MAX_ROLLOUT_DEPTH = 10 # Maximum depth for the simulation (rollout) phase
     C_PARAM = 5
-    MODEL_PATH = '/home/idlab332/workspace/ros_ws/tests/big_ware/0/model.pkl' # Path to your pickled model
+    MODEL_PATH = '/home/idlab332/workspace/ros_ws/src/map_dm_nav/map_dm_nav/test1_noob_model.pkl' # Path to your pickled model
     PLOT_TREE = True      # Whether to plot the MCTS tree after each planning step
 
     # --- Initialization ---
