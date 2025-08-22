@@ -93,6 +93,7 @@ class DataSaver(Node):
         self.csv_file_path = experiment+'/records.csv'
         self.save_map_folder = experiment+ '/map'
         os.makedirs(self.save_map_folder, exist_ok=True)
+        os.makedirs(self.save_img_folder, exist_ok=True)
         os.makedirs(experiment, exist_ok=True)
         self.create_csv_file()
         
@@ -179,6 +180,15 @@ class DataSaver(Node):
 
     def ram_used_callback(self, msg):
         self.ram_used = float(msg.data)
+
+    def camera_callback(self, msg):
+        # Convert the ROS Image message to an OpenCV image
+        self.overview_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+
+    def map_callback(self, msg):
+        # Store the latest map data
+        self.map_data = msg
+
     def save_map(self):
         # Save the map only if we have received it
         if self.map_data is None:
@@ -237,11 +247,6 @@ class DataSaver(Node):
             self.get_logger().info(f'Saving map image {image_path}')
             cv2.imwrite(image_path, map_image)
             self.get_logger().info(f'Saved map image {image_path}')
-
-
-    def map_callback(self, msg):
-        # Store the latest map data
-        self.map_data = msg
 
 
     def get_latest_model(self):
