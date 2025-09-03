@@ -29,14 +29,14 @@ class DataSaver(Node):
                
         self.odom_sub = self.create_subscription(
             Odometry,
-            '/odom',
+            '/agent/odom',
             self.odom_callback,
             10
         )
 
         self.odom_sub = self.create_subscription(
             Odometry,
-            '/gazebo/odom',
+            '/odom',
             self.sensor_odom_callback,
             10
         )

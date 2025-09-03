@@ -20,7 +20,7 @@ class RemoveTurtlebot3(Node):
         self.req = DeleteEntity.Request()
         self.odom_subscription = self.create_subscription(
             Odometry,
-            f'/{self.namespace}/odom',
+            '/odom',
             self.odom_callback,
             QoSProfile(depth=10)
         )

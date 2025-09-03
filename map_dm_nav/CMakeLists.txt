@@ -51,7 +51,6 @@ install(PROGRAMS
   map_dm_nav/main.py
 
   simulation_tools/remove_turtlebot3_from_gazebo.py
-  simulation_tools/reset_turtlebot3_odom.py
   simulation_tools/simulation_overview_data_save.py
   simulation_tools/save_data.py
 

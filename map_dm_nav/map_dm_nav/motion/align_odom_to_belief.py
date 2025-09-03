@@ -2,88 +2,68 @@
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Point
-from rclpy.parameter import Parameter
 import sys
-# from pathlib import Path
-# import os
 
-"""
-This paliate odometry drift and consider agent believed pose instead
-(it adds our own drift, but that is okay)
-"""
+class OdomShiftNode(Node):
+    def __init__(self, shift_x: float, shift_y: float):
+        super().__init__('odom_shift_node')
+        self.shift = [-shift_x, -shift_y]
 
-class ResetTurtlebot3Odom(Node):
-    def __init__(self,namespace):
-        super().__init__('reset_odom')
-
-        # self.get_logger().info(str(x) +  str(y)+ str(namespace))
-        self.x_offset = 0
-        self.y_offset = 0
-        self.topic_namespace = str(namespace)
-
-        # Subscriber to /odom
-        self.odom_subscription = self.create_subscription(
+        self.sub = self.create_subscription(
             Odometry,
-            f'{self.topic_namespace}/odom',
+            '/odom',
             self.odom_callback,
             10
         )
 
-        self.believed_odom_sub = self.create_subscription(
-            Point,
-            '/believed_odom',
-            self.believed_odom_callback,
-            10
-        )
-
-        # Publisher to namespace/odom
-        self.odom_publisher = self.create_publisher(
+        self.sub = self.create_subscription(
             Odometry,
-            '/odom',
+            '/believed_odom',
+            self.shift_callback,
             10
         )
+        self.sensor_odom = [0.0, 0.0]  # Initialize sensor odometry position
+        self.pub = self.create_publisher(Odometry, '/agent/odom', 10)
 
-    def odom_callback(self,msg):
-        # Modify the odometry message by subtracting the offsets
-        self.real_odom = [msg.pose.pose.position.x, msg.pose.pose.position.y]
-        msg.pose.pose.position.x -= self.x_offset
-        msg.pose.pose.position.y -= self.y_offset
+        self.get_logger().info(f'OdomShiftNode initialized with shift: x={shift_x}, y={shift_y}')
 
-        # Publish the modified odometry message
-        self.odom_publisher.publish(msg)
+    def odom_callback(self, msg: Odometry):
+        shifted_msg = Odometry()
+        shifted_msg.header = msg.header
+        shifted_msg.child_frame_id = msg.child_frame_id
+        shifted_msg.pose = msg.pose
+        shifted_msg.twist = msg.twist
 
-    def believed_odom_callback(self, msg):
-        """ reset offset so to match believed odom"""
-        m = 0
-        x_offset =  self.real_odom[0] - msg.x
-        y_offset =  self.real_odom[1] - msg.y
+        self.sensor_odom= [shifted_msg.pose.pose.position.x , shifted_msg.pose.pose.position.y]
 
-        #only replace curent offset if the difference is consequent. 
-        #Else we consider odom correct thus not to induce drift meaninglessly
-        if abs(x_offset - self.x_offset) > 0.4:
-            self.x_offset = x_offset
-            m+=1
-        if abs(y_offset - self.y_offset) > 0.4:
-            self.y_offset = y_offset
-            m+=1
-        if m> 0:
-            self.get_logger().info('modified odom offsets [%f, %f]'%(self.x_offset, self.y_offset))
+        shifted_msg.pose.pose.position.x += self.shift[0]
+        shifted_msg.pose.pose.position.y += self.shift[1]
+
+        self.pub.publish(shifted_msg)
+
+    def shift_callback(self, msg: Odometry):
+        believed_odom = [msg.pose.pose.position.x, msg.pose.pose.position.y]
+        current_odom = self.sensor_odom
+        self.shift[0] = believed_odom[0] - current_odom[0]
+        self.shift[1] = believed_odom[1] - current_odom[1]
 
 
 def main(args=None):
     rclpy.init(args=args)
-    x = sys.argv[2] if len(sys.argv) > 2 else 0.0
-    y = sys.argv[4] if len(sys.argv) > 4 else 0.0
-    namespace = sys.argv[6] if len(sys.argv) > 6 else 'agent'
- 
-    reset_turtlebot3_odom = ResetTurtlebot3Odom(x,y,namespace)
 
-    rclpy.spin(reset_turtlebot3_odom)
+    # Parse shift from command line arguments
+    if len(sys.argv) < 4:
+        print("Usage: ros2 run <your_package> shift_husarion_odom.py <x_shift> <y_shift> ")
+        return
+    # print(sys.argv[1], sys.argv[2])
+    shift_x = float(sys.argv[2])
+    shift_y = float(sys.argv[4])
 
-    reset_turtlebot3_odom.destroy_node()
+    node = OdomShiftNode(shift_x, shift_y)
+    rclpy.spin(node)
+
+    node.destroy_node()
     rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
-

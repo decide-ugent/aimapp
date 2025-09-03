@@ -44,12 +44,12 @@ def generate_launch_description():
             namespace='agent',
             executable='get_pano_multiple_camera_action.py',
             remappings=[
-                ('/agent/cmd_vel', '/gazebo/cmd_vel'),
-                ('/agent/odom','/odom'),
-                ('/agent/scan', '/gazebo/scan'),
-                ('/agent/camera_front/image_raw', '/gazebo/camera_front/image_raw'),
-                ('/agent/camera_right/image_raw', '/gazebo/camera_right/image_raw'),
-                ('/agent/camera_left/image_raw', '/gazebo/camera_left/image_raw'),
+                ('/agent/cmd_vel', '/cmd_vel'),
+                ('/agent/odom','/agent/odom'),
+                ('/agent/scan', '/scan'),
+                ('/agent/camera_front/image_raw', '/camera_front/image_raw'),
+                ('/agent/camera_right/image_raw', '/camera_right/image_raw'),
+                ('/agent/camera_left/image_raw', '/camera_left/image_raw'),
             ]
         )
 
@@ -58,8 +58,8 @@ def generate_launch_description():
             namespace='agent',
             executable='get_360_camera_action.py',
             remappings=[
-                ('/agent/odom','/odom'),
-                ('/agent/scan', '/gazebo/scan'),
+                ('/agent/odom','agent/odom'),
+                ('/agent/scan', '/scan'),
             ]
         )
     
@@ -69,9 +69,9 @@ def generate_launch_description():
             executable='potential_field_action.py',
             namespace='agent',
             remappings=[
-                ('/agent/cmd_vel','/gazebo/cmd_vel'),
-                ('/agent/odom','/odom'),
-                ('/agent/scan','/gazebo/scan'),
+                ('/agent/cmd_vel','/cmd_vel'),
+                ('/agent/odom','agent/odom'),
+                ('/agent/scan','/scan'),
             ]
         )
     # rosbag = ExecuteProcess(

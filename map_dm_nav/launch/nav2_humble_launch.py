@@ -16,7 +16,6 @@ def generate_launch_description():
     rviz_file = os.path.join(get_package_share_directory('map_dm_nav'), 'rviz', 'nav2_default_view.rviz')
 
 
-    namespace = "gazebo"
     param_substitutions = {
         'use_sim_time': 'True',
         # 'yaml_filename': map_file
@@ -25,9 +24,9 @@ def generate_launch_description():
     remappings = [
         ('/tf', 'tf'),
         ('/tf_static', 'tf_static'),
-        ('/odom', 'odom'),
-        ('scan', f'/{namespace}/scan'),
-        ('/cmd_vel', f'/{namespace}/cmd_vel')
+        ('odom', '/agent/odom'),
+        ('scan', '/scan'),
+        ('/cmd_vel', '/cmd_vel')
     ]
 
     # nav2_yaml = RewrittenYaml(
