@@ -3,6 +3,7 @@ FROM osrf/ros:humble-desktop
 
 # Set environment variable to use host's X11 display
 ENV DISPLAY=:0
+ENV ROS_DOMAIN_ID=0
 
 # Make sure everything is up to date before building from source
 RUN apt-get update \
@@ -33,7 +34,7 @@ RUN apt-get update && apt-get install -q -y --no-install-recommends \
     ros-humble-navigation2 \
     ros-humble-nav2-bringup \
     python3-pyqt5 \  
-    && apt-get clean \
+    && apt-get clean 
 
 RUN apt-get update && apt-get install -y software-properties-common \
     && add-apt-repository ppa:openrobotics/gazebo11-gz-cli \

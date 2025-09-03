@@ -9,6 +9,7 @@ DESKTOP_RESULTS_FOLDER="$(pwd)"
 docker run -it --rm --privileged --net=host \
     --name map_dm_nav \
     -e DISPLAY=$DISPLAY \
+    -e ROS_DOMAIN_ID=0 \
     -e XAUTHORITY=$XAUTHORITY \
     -v ${DESKTOP_RESULTS_FOLDER}:/home/ros2_ws/src/map-dm-nav \
     -v ${DESKTOP_RESULTS_FOLDER}/tests:/home/ros2_ws/tests \
