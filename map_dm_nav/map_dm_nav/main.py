@@ -193,8 +193,8 @@ class HighLevelNav_ROSInterface(Node):
         we generate as many turns as we have orientations'''
         if n_actions % 2 !=0:
             n_actions -= 1
-
-        n_turn = 2
+        #TODO: the numbers of stops turning on itselfs depends how many cameras are used + FOv of cameras. 
+        n_turn = 8
         return n_turn, n_actions
     
     def get_current_timestep(self)->int:
