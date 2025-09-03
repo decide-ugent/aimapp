@@ -6,6 +6,7 @@ from geometry_msgs.msg import Point
 from rclpy.action import ActionClient
 from map_dm_nav_actions.action import Panorama    
 from action_msgs.msg import GoalStatus
+import argparse
 
 class PanoramaClient(Node):
 
@@ -16,14 +17,14 @@ class PanoramaClient(Node):
         self.panorama_status = GoalStatus.STATUS_EXECUTING
         self.panorama_result = None                             
 
-    def turn_to_get_panorama(self, n_turn_stops:int=8):
+    def turn_to_get_panorama(self, n_turn_stops:int=8,n_actions:int=6):
         '''
         turn 360degree and take n_turn_stops image of the surrounding. 
         n_turn_stops must be >=0 to the number of direction the agent 
         can take, the agent is advised to take images in the directions it can go
         return result
         '''
-        panorama_future = self.send_panorama_goal(n_turn_stops)
+        panorama_future = self.send_panorama_goal(n_turn_stops, n_actions)
         rclpy.spin_until_future_complete(self, panorama_future)
         # print(panorama_future.__dict__)
         # print(highlevelnav.panorama_status)
@@ -33,7 +34,7 @@ class PanoramaClient(Node):
 
         return self.panorama_result
 
-    def send_panorama_goal(self, n_turn_stops:int=8):
+    def send_panorama_goal(self, n_turn_stops:int=8,n_actions:int=6):
         """ 
         ACTION
         Receive the number of stop to do during a 360* turn 
@@ -42,13 +43,21 @@ class PanoramaClient(Node):
         goal_msg = Panorama.Goal()
 
         # Generate the list of n_turn-stop float values from 0 to 2*pi
-        angles = np.linspace(0, 2 * np.pi, n_turn_stops, endpoint=False)
-        angles_list = angles.tolist()
-        goal_msg.goal_angles = angles_list
+        angle_rot = np.pi/4
+        if n_turn_stops > 0:
+            goal_angles = [angle_rot]
+        else:
+            goal_angles = []
+        # Generate the list of n_turn-stop float values from 0 to 2*pi
+        for i in range(n_turn_stops-1):
+            angle = goal_angles[-1] + angle_rot
+            goal_angles.append(angle)
+        goal_msg.goal_angles = goal_angles
+        goal_msg.n_actions = n_actions
 
         self.get_panorama.wait_for_server()
         self.panorama_status = GoalStatus.STATUS_EXECUTING
-        self.get_logger().info('goal orientations to reach: %s' % str(angles_list))
+        self.get_logger().info('goal orientations to reach: %s' % str(goal_angles))
             # next_goal_theta = (goal_angles) % (2*np.pi)
         future = self.get_panorama.send_goal_async(goal_msg,feedback_callback=self.pano_feedback_callback)
         
@@ -79,3 +88,25 @@ class PanoramaClient(Node):
         feedback = feedback_msg.feedback
         #self.get_logger().info('Panorama feedback current goal angle: {0}'.format(feedback.current_stop))
         
+def main(x, actions):
+    rclpy.init()
+
+    panorama_client = PanoramaClient()
+    n_turn = x
+    future = panorama_client.turn_to_get_panorama(n_turn, actions)
+    
+    rclpy.spin_until_future_complete(panorama_client, future)
+    panorama_client.get_logger().info('Done')
+    # %s' %  str(response.status))
+
+    panorama_client.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    
+    parser = argparse.ArgumentParser(description='how many stops')
+    parser.add_argument('--x', type=int, default=2,  help='how many stops')
+    parser.add_argument('--actions', type=int, default=12,  help='how many actions')
+    args = parser.parse_args()
+    main(args.x, args.actions)

@@ -419,10 +419,8 @@ def main(args=None):
     for action in policy:
         #To get the subscriber data
         rclpy.spin_once(highlevelnav, timeout_sec=0.5)
-        highlevelnav.get_logger().warn('HERERHEREHEREHREHRE')
         highlevelnav.add_new_state_in_model()
-        highlevelnav.get_logger().warn('HERERHEREHEREHREHRE')
-        
+         
         action, action_data = highlevelnav.define_next_objective(action, ob_id, obstacle_dist_per_actions)
 
         #highlevelnav.get_logger().info('checking the action %f, %s' % (action, str(type(action))))

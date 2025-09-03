@@ -25,12 +25,8 @@ class GeneratePanoramaMultipleCam(Node):
         self.tf_theta = None
         self.tf_buffer = tf2_ros.Buffer()
 
-        
-
-
         self.execution_rate =  self.create_rate(1) #sec = 1/Hz
 
-        
         """************************************************************
         ** Initialise ROS subscribers
         ************************************************************"""
@@ -39,9 +35,7 @@ class GeneratePanoramaMultipleCam(Node):
                 'scan',
                 self.lidar_callback,
                 10)
-        
-        
-        
+                
         self.image_sub = self.create_subscription(
             Image,
             'camera_front/image_raw',
