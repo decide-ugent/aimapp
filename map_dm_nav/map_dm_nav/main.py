@@ -40,7 +40,9 @@ class HighLevelNav_ROSInterface(Node):
         self.robot_dim = 0.3
         #The lidar must say that there is X free dist behind position to consider it free #security
 
+
         self.panorama_client = PanoramaMultipleCamClient()
+        self.n_cameras = 3 #How many cameras are we using? If 1 camera 360' we can just put 12 cameras or something (will not turn that way)
 
   
         #self.motion_client = Nav2Client()
@@ -189,13 +191,25 @@ class HighLevelNav_ROSInterface(Node):
     
     #==== GET METHODS ====#
     def get_n_pictures(self,n_actions)->int:
-        ''' how many turns to generate a panorama with 3 cameras
+        ''' how many turns to generate a panorama with X cameras
         we generate as many turns as we have orientations'''
         if n_actions % 2 !=0:
             n_actions -= 1
-        #TODO: the numbers of stops turning on itselfs depends how many cameras are used + FOv of cameras. 
-        n_turn = 8
+
+        if self.n_cameras == 1:
+            n_turn = n_actions
+        elif self.n_cameras == 2:
+            n_turn = int(n_actions/2)
+        elif self.n_cameras == 3:
+            n_turn = int(n_actions/4)
+        else :
+            n_turn = 1
+        if n_turn <= 0 :
+            n_turn = 1
         return n_turn, n_actions
+    
+
+    
     
     def get_current_timestep(self)->int:
         """ To keep track of where we are in process """
