@@ -129,7 +129,12 @@ class GeneratePanorama360Cam(Node):
 
         latest_image_path = get_latest_image_file(self.images_dir)
         self.get_logger().info(f"Latest image: {latest_image_path}")
-        images_compilation = [self.img_bridge.cv2_to_imgmsg(read_image(latest_image_path, reduction=8), encoding='rgb8')]
+        image = read_image(latest_image_path, reduction=6)
+        if image is None:
+            self.get_logger().error("Failed to read the image. Exiting.")
+            goal_handle.abort()
+            return Panorama.Result()
+        images_compilation = [self.img_bridge.cv2_to_imgmsg(image, encoding='rgb8')]
 
         while self.last_scan is None or self.robot_odom is None:
             self.execution_rate.sleep()
@@ -212,14 +217,14 @@ class GeneratePanorama360Cam(Node):
     ** ROS CALLBACKS
     ************************************************************"""
     def lidar_callback(self, msg):
-        # if self.last_scan is None:
-            # self.get_logger().info('I heard: scan')
+        if self.last_scan is None:
+            self.get_logger().info('I heard: scan')
         self.last_scan = msg
         #print('self.last_scan in callback', self.last_scan.range_max)
 
     def odom_callback(self, msg):
-        # if self.robot_odom is None:
-            # self.get_logger().info('I heard: odom')
+        if self.robot_odom is None:
+            self.get_logger().info('I heard: odom')
         self.robot_odom = extract_robot_xy_theta(msg)
 
 def extract_robot_xy_theta(odom_msg)->np.ndarray:

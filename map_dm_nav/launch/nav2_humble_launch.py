@@ -15,7 +15,7 @@ def generate_launch_description():
 
     namespace = ""
     param_substitutions = {
-        'use_sim_time': 'True',
+        'use_sim_time': 'False',
         # 'yaml_filename': map_file
     }
 
@@ -49,15 +49,18 @@ def generate_launch_description():
     #     remappings=remappings
     # )]
     # )
-    
-    map_server = Node(
-        package='nav2_map_server',
+
+    map_server = TimerAction(
+    period=0.50,
+    actions=[Node(
+         package='nav2_map_server',
         executable='map_server',
         name='map_server',
         output='screen',
-        parameters=[{'use_sim_time': True}, 
+        parameters=[{'use_sim_time': False}, 
                     {'yaml_filename':map_file}],
         remappings=remappings
+    )]
     )
         
     amcl = Node(

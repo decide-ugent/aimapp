@@ -36,8 +36,8 @@ class OdomShiftNode(Node):
 
         self.sensor_odom= [shifted_msg.pose.pose.position.x , shifted_msg.pose.pose.position.y]
 
-        shifted_msg.pose.pose.position.x += self.shift[0]
-        shifted_msg.pose.pose.position.y += self.shift[1]
+        shifted_msg.pose.pose.position.x -= self.shift[0]
+        shifted_msg.pose.pose.position.y -= self.shift[1]
 
         self.pub.publish(shifted_msg)
 

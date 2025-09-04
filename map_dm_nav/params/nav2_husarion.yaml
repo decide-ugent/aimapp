@@ -80,9 +80,9 @@ behavior_server:
     robot_base_frame: base_link
     transform_timeout: 0.1
     simulate_ahead_time: 2.0
-    max_rotational_vel: 0.60
-    min_rotational_vel: 0.1
-    rotational_acc_lim: 1.2
+    max_rotational_vel: 0.20
+    min_rotational_vel: 0.05
+    rotational_acc_lim: 0.6
 
 bt_navigator:
   ros__parameters:
@@ -159,14 +159,14 @@ controller_server:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
 
       # Velocity/accelaration limits also have to be adjusted in the velocity smoother
-      desired_linear_vel: 0.2
+      desired_linear_vel: 0.08
       lookahead_dist: 0.6
       min_lookahead_dist: 0.4
       max_lookahead_dist: 0.9
       lookahead_time: 2.0
       transform_tolerance: 1.0
       use_velocity_scaled_lookahead_dist: true
-      min_approach_linear_velocity: 0.05
+      min_approach_linear_velocity: 0.01
       approach_velocity_scaling_dist: 0.5
       use_collision_detection: true
       max_allowed_time_to_collision_up_to_carrot: 1.0
@@ -182,8 +182,8 @@ controller_server:
       # it is only used when rotating to heading (use_rotate_to_heading)
       # for some reason rotate_to_heading_angular_vel is ignored and robot rotates with
       # max_angular_accel/10. angular velocity (that's why it is set to higher value)
-      max_angular_accel: 1.0
-      rotate_to_heading_angular_vel: 0.8
+      max_angular_accel: 0.50
+      rotate_to_heading_angular_vel: 0.2
       max_robot_pose_search_dist: 10.0
       use_interpolation: true
 
