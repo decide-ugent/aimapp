@@ -10,6 +10,9 @@ DESKTOP_RESULTS_FOLDER=os.getcwd()
 
 model_dir = LaunchConfiguration('model_dir', default='None')
 goal_path = LaunchConfiguration('goal_path', default='None')
+x_pose = LaunchConfiguration('x', default='0.0')
+y_pose = LaunchConfiguration('y', default='0.0')
+
 
 def find_folder_with_highest_number(directory_path):
     # List all directories in the given directory
@@ -77,10 +80,24 @@ def generate_launch_description():
     # rosbag = ExecuteProcess(
     #         cmd=['ros2', 'bag', 'record', 'world/camera/image_raw', '-o', 'tests/above_view_test_'+str(highest_folder_id+1)],
     #     )
+
+    reset_odometry_cmd = Node(
+        package='map_dm_nav',
+        executable='align_odom_to_belief.py',  
+        output='screen',
+        arguments=[
+            '-x', x_pose,
+            '-y', y_pose,
+        ],
+        # remappings=[
+        #     ('/odom', 'gazebo/odom')
+        # ]
+    )
    
     ld.add_action(agent_node)
     ld.add_action(panorama_action)
     ld.add_action(potential_flied_action)
+    ld.add_action(reset_odometry_cmd)
     # ld.add_action(panorama_360_action)
     # ld.add_action(rosbag)
     return ld

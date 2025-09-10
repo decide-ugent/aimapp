@@ -76,7 +76,6 @@ class HighLevelNav_ROSInterface(Node):
            latest_qos)
         
     
-
     #==== VISUALISATION CALLBACK ====#
 
     def save_model(self):
@@ -103,6 +102,8 @@ class HighLevelNav_ROSInterface(Node):
         if self.model_dir == 'None':
             obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(n_actions)
             #create model
+
+            self.get_logger().info('observations ob_id %f, obstacles %s' % (ob_id, str(obstacle_dist_per_actions)))
             self.model = Ours_V5_RW(num_obs=2, num_states=2, dim=2, \
                                     observations=[ob_id], lookahead_policy=10,\
                                     n_actions=n_actions, influence_radius=self.influence_radius,\

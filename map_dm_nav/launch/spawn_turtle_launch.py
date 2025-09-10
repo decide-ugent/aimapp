@@ -37,19 +37,19 @@ def generate_launch_description():
     #     output='screen',
     # )
 
-    reset_odometry_cmd = Node(
-        package='map_dm_nav',  
-        executable='align_odom_to_belief.py', 
-        output='screen',
-        arguments=[
-            '-x', x_pose,
-            '-y', y_pose,
-            # '-namespace', namespace,
-        ],
-        # remappings=[
-        #     ('/odom', 'gazebo/odom')
-        # ]
-    )
+    # reset_odometry_cmd = Node(
+    #     package='map_dm_nav',  
+    #     executable='align_odom_to_belief.py', 
+    #     output='screen',
+    #     arguments=[
+    #         '-x', x_pose,
+    #         '-y', y_pose,
+    #         # '-namespace', namespace,
+    #     ],
+    #     # remappings=[
+    #     #     ('/odom', 'gazebo/odom')
+    #     # ]
+    # )
 
 
     ld = LaunchDescription()
