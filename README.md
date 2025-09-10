@@ -1,6 +1,6 @@
 # Map DM Nav Project 
 
-This repository contains the code for the Actove Inference (AIF) Decision Making, localisation and mapping (Map DM Nav) project. 
+This repository contains the code for the Active Inference (AIF) Decision Making, localisation and mapping (Map DM Nav) project. 
 It requires ubuntu 22.04 and ros2 humble or is configured to run inside a Docker container for ease of setup and consistent environments.
 
 
@@ -11,13 +11,27 @@ It requires ubuntu 22.04 and ros2 humble or is configured to run inside a Docker
 [Locally](##Locally)  
 [Start the project](##Start-the-project)  
 [Modifying Agent and MCTS Parameters](##Modifying-Agent-and-MCTS-Parameters)  
-[Extra Features](##Extra-Features)
+[Extra Features](##Extra-Features)\
+[How to cite us](##Cite-Us)
 
 
 <!-- <a name="Overview"/> -->
 ## Overview  <a name="Overview"></a>
 
 This project enables autonomous agents to explore and navigate unknown environments using Active Inference and Monte Carlo Tree Search (MCTS) for decision making. The project is modular and can be extended for different robots and environments.
+
+It's exploration performance have been evaluated against FAEL, Gbplanner and Frontiers. 
+
+$~~~~~~~~$ Our AIF exploration model    vs   Frontiers
+<p align="center">
+<img src='git_img/robot_path_home_ours_more_info.gif' width='250'> | <img src='git_img/robot_path_home_frontiers_more_info.gif' width='250'>
+</p>
+vs Gbplanner  vs FAEL
+<p align="center">
+<img src='git_img/robot_path_home_gbplan_more_info.gif' width='250'> | <img src='git_img/robot_path_home_fael_more_info.gif' width='250'>
+</p>
+
+A general introduction to the model can be found on the blog post [Active Inference for Robot Autonomous Navigation](https://decide.ugent.be/blog/2025-09-10-robot-nav-aif-rw)
 
 ## Docker <a name="Docker"></a>
 ### Prerequisites
@@ -262,3 +276,7 @@ ros2 topic pub -r 10 /new_state map_dm_nav_actions/msg/NewState "{pose: [-0.0,-0
 
 The callback handling this message is processed before executing the next action.
 Each new pose can only be inserted once.
+
+
+## How to cite us
+
