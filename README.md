@@ -45,14 +45,14 @@ Before you begin, ensure you have the following installed:
 
 1.  **Clone the Repository:**
 ```bash
-git clone map_dm_nav git_link
-cd map_dm_nav
+git clone aimapp git_link
+cd aimapp
 ```
 
 2.  **Build the Docker Image:**
-    * This command builds the image using the `Dockerfile` in the current directory and tags it as `map_dm_nav`.
+    * This command builds the image using the `Dockerfile` in the current directory and tags it as `aimapp`.
 ```bash
-docker build -t map_dm_nav .
+docker build -t aimapp .
 ```
 
 ### Usage
@@ -67,13 +67,13 @@ chmod +x launch_docker.sh
 ```bash
 bash launch_docker.sh 
 ```
-* mounts volumes (for input/output data), so the map_dm_nav repo can be modified locally and run in your docker.
+* mounts volumes (for input/output data), so the aimapp repo can be modified locally and run in your docker.
 once it finished colcon build 
 press ctrl+p ctrl+q to detach the window and let the docker run in the background
 
 to access the container:
 ```bash
-docker exec -it map_dm_nav bash
+docker exec -it aimapp bash
 ```
 
 ## Locally <a name="Locally"></a>
@@ -87,7 +87,7 @@ Before you begin, ensure you have the following installed:
 ### Setup and Installation
 
 ```bash
-cd map_dm_nav/map_dm_nav
+cd aimapp/aimapp
 pip install -e .
 ```
 ```bash
@@ -108,7 +108,7 @@ sudo apt install libgphoto2-6
 Start the world
 ```
 source install/setup.bash 
-ros2 launch map_dm_nav warehouse_launch.py
+ros2 launch aimapp warehouse_launch.py
 ```
 
 OR
@@ -121,35 +121,35 @@ ros2 launch aws_robomaker_small_house_world small_house.launch.py gui:=true
 **Spawn the agent**
 ```
 source install/setup.bash 
-ros2 launch map_dm_nav spawn_turtle_launch.py x:=0.0 y:=0.0
+ros2 launch aimapp spawn_turtle_launch.py x:=0.0 y:=0.0
 ```
 **Start Nav2** (optional) -- If started has to start almost simultaneously as the world and spawn due to simulation time reliance.
 ```
 source install/setup.bash 
-ros2 launch map_dm_nav nav2_humble_launch.py
+ros2 launch aimapp nav2_humble_launch.py
 ```
 
 **Start the agent**
 ```
 source install/setup.bash 
-ros2 launch map_dm_nav agent_launch.py
+ros2 launch aimapp agent_launch.py
 ```
 
 **Record position GT/believed_odom over time** (optional)
 ```
 source install/setup.bash 
-ros2 run map_dm_nav simulation_overview_data_save.py
+ros2 run aimapp simulation_overview_data_save.py
 ```
 
 **Start Rviz** (optional)
 ```
-rviz2 -d src/map_dm_nav/map_dm_nav/rviz/nav2_default_view.rviz 
+rviz2 -d src/aimapp/aimapp/rviz/nav2_default_view.rviz 
 ```
 
 ### Start with existing model or goal
 
 ```
-ros2 launch map_dm_nav agent_launch.py model_dir:=path_to_model_dir goal_path:=path_to_your_image_file.jpg_png
+ros2 launch aimapp agent_launch.py model_dir:=path_to_model_dir goal_path:=path_to_your_image_file.jpg_png
 ```
 
 `path_to_model_dir` has to be a directory leading to a model.pkl file. 
@@ -161,7 +161,7 @@ You can customise the agent's behaviour and the MCTS planning process by editing
 
 ### 1. Agent Parameters (`Ours_V5_RW` class)
 
-Located in: `map_dm_nav/map_dm_nav/model/V5.py`
+Located in: `aimapp/aimapp/model/V5.py`
 
 ```python
 class Ours_V5_RW(Agent):
@@ -192,7 +192,7 @@ class Ours_V5_RW(Agent):
 
 ### 2. MCTS Parameters
 
-Also in `map_dm_nav/map_dm_nav/model/V5.py`, look for:
+Also in `aimapp/aimapp/model/V5.py`, look for:
 
 ```python
 # MCTS PARAMETERS
@@ -215,8 +215,8 @@ A big issue with that is the dilution of certainty about its position/state as w
 #### Sensor process
 The sensory process can be modified at will. 
 
-Currently our observation specific folder is: `map_dm_nav/map_dm_nav/obs_transf` and we expect a list of image as input to stitch them into a single view. 
-The main code is: `map_dm_nav/map_dm_nav/obs_transf/observation_match.py`, it treats the data (stitch the list of image) and compare them with an SSIM. 
+Currently our observation specific folder is: `aimapp/aimapp/obs_transf` and we expect a list of image as input to stitch them into a single view. 
+The main code is: `aimapp/aimapp/obs_transf/observation_match.py`, it treats the data (stitch the list of image) and compare them with an SSIM. 
 
 As long as the process outputs a number (or a few numbers if we modify the model to receive multiple observations), the model can use it. 
 You can output as many numbers as desired, as long as a new observation gets an incremented value starting from 0. 
@@ -243,7 +243,7 @@ Panorama should be a list of Ros images.
 #### Motion process
 
 Currently we use Nav2 or a potential field provided in this folder and already started by default in `agent_launch.py`. 
-Nav2 can be started using `nav2_humble_launch.py`, the parameters can be found in `map_dm_nav/map_dm_nav/params/nav2_humble_params.yaml`. There is no mapping launched with our nav2. 
+Nav2 can be started using `nav2_humble_launch.py`, the parameters can be found in `aimapp/aimapp/params/nav2_humble_params.yaml`. There is no mapping launched with our nav2. 
 
 The potential field has not been finely tuned and is only there as a backup to quickly test the model, it is highly imprudent to use it in the real world if the robot doesn't have bumpers. 
 
@@ -268,7 +268,7 @@ The model uses the boolean to know if we reached the pose and determine using po
 
 You can inject a new state into the map if you know the desired pose and the states it should be connected to. For example:
 ```bash
-ros2 topic pub -r 10 /new_state map_dm_nav_actions/msg/NewState "{pose: [-0.0,-0.20], connecting_states: [0], influence_radius: 0.1"} 
+ros2 topic pub -r 10 /new_state aimapp_actions/msg/NewState "{pose: [-0.0,-0.20], connecting_states: [0], influence_radius: 0.1"} 
 ```
 `connecting_states` is optional. If empty list, the new state will be created without explicit links.
 

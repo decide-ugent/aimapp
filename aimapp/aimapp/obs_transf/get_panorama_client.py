@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+import numpy as np
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import Point
+from rclpy.action import ActionClient
+from aimapp_actions.action import Panorama    
+from action_msgs.msg import GoalStatus
+import argparse
+
+class PanoramaClient(Node):
+
+    def __init__(self):
+        super().__init__('panorama_client')
+        self.get_logger().info('panorama client node has been started.')
+        self.get_panorama = ActionClient(self,Panorama, 'get_panorama')     
+        self.panorama_status = GoalStatus.STATUS_EXECUTING
+        self.panorama_result = None                             
+
+    def turn_to_get_panorama(self, n_turn_stops:int=8,n_actions:int=6):
+        '''
+        turn 360degree and take n_turn_stops image of the surrounding. 
+        n_turn_stops must be >=0 to the number of direction the agent 
+        can take, the agent is advised to take images in the directions it can go
+        return result
+        '''
+        panorama_future = self.send_panorama_goal(n_turn_stops, n_actions)
+        rclpy.spin_until_future_complete(self, panorama_future)
+        # print(panorama_future.__dict__)
+        # print(highlevelnav.panorama_status)
+        
+        while self.panorama_status != GoalStatus.STATUS_SUCCEEDED:
+            rclpy.spin_once(self)
+
+        return self.panorama_result
+
+    def send_panorama_goal(self, n_turn_stops:int=8,n_actions:int=6):
+        """ 
+        ACTION
+        Receive the number of stop to do during a 360* turn 
+        and send it to the service to get panorama 
+        """
+        goal_msg = Panorama.Goal()
+
+        # Generate the list of n_turn-stop float values from 0 to 2*pi
+        angle_rot = np.pi/4
+        if n_turn_stops > 0:
+            goal_angles = [angle_rot]
+        else:
+            goal_angles = []
+        # Generate the list of n_turn-stop float values from 0 to 2*pi
+        for i in range(n_turn_stops-1):
+            angle = goal_angles[-1] + angle_rot
+            goal_angles.append(angle)
+        goal_msg.goal_angles = goal_angles
+        goal_msg.n_actions = n_actions
+
+        self.get_panorama.wait_for_server()
+        self.panorama_status = GoalStatus.STATUS_EXECUTING
+        self.get_logger().info('goal orientations to reach: %s' % str(goal_angles))
+            # next_goal_theta = (goal_angles) % (2*np.pi)
+        future = self.get_panorama.send_goal_async(goal_msg,feedback_callback=self.pano_feedback_callback)
+        
+        future.add_done_callback(self.pano_goal_response_callback)
+        return future
+    
+    def pano_goal_response_callback(self, future):
+        """ Get regular goal_responses"""
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().info('Goal rejected :(')
+            return
+
+        self.get_logger().info('Goal accepted :)')
+
+        self._get_result_future = goal_handle.get_result_async()
+        self._get_result_future.add_done_callback(self.get_result_pano_callback)
+
+    def get_result_pano_callback(self, future):
+        """ Get pano action result"""
+        result = future.result().result
+        # self.get_logger().info('Result: {0}'.format(result.sequence))
+        self.panorama_status = GoalStatus.STATUS_SUCCEEDED
+        self.panorama_result = result
+
+    def pano_feedback_callback(self, feedback_msg):
+        """ Get the panorama action feedback"""
+        feedback = feedback_msg.feedback
+        #self.get_logger().info('Panorama feedback current goal angle: {0}'.format(feedback.current_stop))
+        
+def main(x, actions):
+    rclpy.init()
+
+    panorama_client = PanoramaClient()
+    n_turn = x
+    future = panorama_client.turn_to_get_panorama(n_turn, actions)
+    
+    rclpy.spin_until_future_complete(panorama_client, future)
+    panorama_client.get_logger().info('Done')
+    # %s' %  str(response.status))
+
+    panorama_client.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    
+    parser = argparse.ArgumentParser(description='how many stops')
+    parser.add_argument('--x', type=int, default=2,  help='how many stops')
+    parser.add_argument('--actions', type=int, default=12,  help='how many actions')
+    args = parser.parse_args()
+    main(args.x, args.actions)

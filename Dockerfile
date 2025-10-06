@@ -80,8 +80,8 @@ RUN cd /home/ros2_ws/ \
 # --merge-install
 
 RUN apt-get install -y xauth
-COPY map_dm_nav/map_dm_nav/setup.py /home/setup/setup.py
-COPY map_dm_nav/map_dm_nav/requirements.txt /home/setup/requirements.txt
+COPY aimapp/aimapp/setup.py /home/setup/setup.py
+COPY aimapp/aimapp/requirements.txt /home/setup/requirements.txt
 
 RUN cd /home/setup && pip install .
 
@@ -93,4 +93,4 @@ COPY entrypoint.sh /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 
 
-#command: docker build -t map_dm_nav .
+#command: docker build -t aimapp .

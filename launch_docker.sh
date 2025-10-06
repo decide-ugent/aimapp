@@ -7,13 +7,13 @@ DESKTOP_RESULTS_FOLDER="$(pwd)"
 
 # Run the Docker container with GUI support (works on CPU here, not NVIDIA)
 docker run -it --rm --privileged --net=host \
-    --name map_dm_nav \
+    --name aimapp \
     -e DISPLAY=$DISPLAY \
     -e ROS_DOMAIN_ID=0 \
     -e XAUTHORITY=$XAUTHORITY \
     -v ${DESKTOP_RESULTS_FOLDER}:/home/ros2_ws/src/map-dm-nav \
     -v ${DESKTOP_RESULTS_FOLDER}/tests:/home/ros2_ws/tests \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
-    -w /home/ros2_ws map_dm_nav:latest
+    -w /home/ros2_ws aimapp:latest
 
-docker exec -itd map_dm_nav bash
+docker exec -itd aimapp bash
