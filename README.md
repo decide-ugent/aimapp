@@ -5,6 +5,9 @@ It includes localisation, mapping and decision making to explore or reach given 
  
 It requires ubuntu 22.04 and ros2 humble or is configured to run inside a Docker container for ease of setup and consistent environments.
 
+For a general audience understanding, we lead you to our blogs: [https://decide.ugent.be/blog/2025-09-10-robot-nav-aif-rw/](https://decide.ugent.be/blog/2025-09-10-robot-nav-aif-rw/)
+
+For a in-depth understanding, please refer to our full paper in [How to cite us](##Cite-Us)
 
 
 ##### Table of Contents  
