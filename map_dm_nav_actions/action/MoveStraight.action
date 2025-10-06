@@ -1,7 +1,0 @@
-geometry_msgs/Point goal_pose
----
-float32[] pose
-bool goal_reached
----
-# Feedback
-float64 dist_to_goal 

@@ -1,0 +1,10 @@
+#geometry_msgs/Pose2D[] goal_poses
+float32[] goal_angles
+int32 n_actions
+---
+sensor_msgs/Image[] panorama
+#sensor_msgs/LaserScan[] pano_scan
+float32[] pano_scan
+---
+float32 current_stop
+
