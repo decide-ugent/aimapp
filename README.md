@@ -1,9 +1,9 @@
-# Map DM Nav Project 
+# AIMAPP Project 
 
-This repository contains the code for the Actove Inference (AIF) Decision Making, localisation and mapping (Map DM Nav) project. 
+This repository contains the code for the Active Inference (AIF) Mapping and Planning project (AIMAPP) 
+It includes localisation, mapping and decision making to explore or reach given goals (as panorama observations or poses -not tested-). 
+
 It requires ubuntu 22.04 and ros2 humble or is configured to run inside a Docker container for ease of setup and consistent environments.
-
-
 
 ##### Table of Contents  
 [Overview](##Overview)  
