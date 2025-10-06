@@ -10,7 +10,7 @@ from geometry_msgs.msg import Twist
 import threading
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from map_dm_nav_actions.action import Panorama    
-
+import time
 
 class GeneratePanoramaMultipleCam(Node):
 
@@ -24,6 +24,8 @@ class GeneratePanoramaMultipleCam(Node):
         self.image_batch = 0
         self.tf_theta = None
         self.tf_buffer = tf2_ros.Buffer()
+
+        self.timeout = 120.0
 
         self.execution_rate =  self.create_rate(1) #sec = 1/Hz
 
@@ -174,9 +176,10 @@ class GeneratePanoramaMultipleCam(Node):
             self.get_logger().info('next desired orientation: %f, agent orientation: %f' % (goal_angle,self.robot_odom[2]))
             # next_goal_theta = (goal_angles) % (2*np.pi)
             
-            self.reach_next_orientation(goal_angle, feedback_msg, goal_handle)
+            success = self.reach_next_orientation(goal_angle, feedback_msg, goal_handle)
+            if success:
+                images_compilation, image_batch = self.add_images_to_list(images_compilation, image_batch)
         
-            images_compilation, image_batch = self.add_images_to_list(images_compilation, image_batch)
         
         self.stop_rotation()
         while self.last_scan is None :
@@ -190,14 +193,20 @@ class GeneratePanoramaMultipleCam(Node):
         return result
 
     def reach_next_orientation(self,next_goal_theta:float, feedback_msg:object, goal_handle:object):
+
+        start_time = time.time()
         #this is a security to compare comparable number when we are looping back from 2pi to 0
         if next_goal_theta <= 0.1 and self.robot_odom[2] >= 5.4: #2pi =~ 6.28
             next_goal_theta = np.clip(next_goal_theta +2*np.pi, a_min = 5.4, a_max=2*np.pi)
-            #self.get_logger().info('modified goal orientation: %f ' % (next_goal_theta))
+            #self.get_logger().info('modified goal orientation: %f ' % (next_goal_theta))       
 
         while abs(self.robot_odom[2] - next_goal_theta) > 0.1 and rclpy.ok():
             if self.action_goal_exceptions(goal_handle):
                 return Panorama.Result()
+            
+            if time.time() - start_time > self.timeout:
+                self.get_logger().warn(f"Timeout {self.timeout} reached while trying to reach orientation {next_goal_theta:.2f}")
+                return False
             # rclpy.spin_once(self)
             #self.get_logger().info('current odom: %s, goal to reach: %s' % (str(self.robot_odom), str(next_goal_theta)))
             speed = Twist()
@@ -206,6 +215,8 @@ class GeneratePanoramaMultipleCam(Node):
             feedback_msg.current_stop = next_goal_theta
             goal_handle.publish_feedback(feedback_msg)
             self.execution_rate.sleep()
+
+        return True
     
     def stop_rotation(self)-> None:
         speed = Twist()
