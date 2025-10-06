@@ -11,7 +11,7 @@ docker run -it --rm --privileged --net=host \
     -e DISPLAY=$DISPLAY \
     -e ROS_DOMAIN_ID=0 \
     -e XAUTHORITY=$XAUTHORITY \
-    -v ${DESKTOP_RESULTS_FOLDER}:/home/ros2_ws/src/map-dm-nav \
+    -v ${DESKTOP_RESULTS_FOLDER}:/home/ros2_ws/src/aimapp \
     -v ${DESKTOP_RESULTS_FOLDER}/tests:/home/ros2_ws/tests \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
     -w /home/ros2_ws aimapp:latest
