@@ -36,7 +36,6 @@ vs Gbplanner  vs FAEL
 <img src='git_img/robot_path_home_gbplan_more_info.gif' width='250'> | <img src='git_img/robot_path_home_fael_more_info.gif' width='250'>
 </p>
 
-A general introduction to the model can be found on the blog post [Active Inference for Robot Autonomous Navigation](https://decide.ugent.be/blog/2025-09-10-robot-nav-aif-rw)
 
 ## Docker <a name="Docker"></a>
 ### Prerequisites
@@ -126,24 +125,29 @@ ros2 launch aws_robomaker_small_house_world small_house.launch.py gui:=true
 **Spawn the agent**
 ```
 source install/setup.bash 
-ros2 launch aimapp spawn_turtle_launch.py x:=0.0 y:=0.0
+ros2 launch aimapp spawn_turtle_launch.py 
 ```
 **Start Nav2** (optional) -- If started has to start almost simultaneously as the world and spawn due to simulation time reliance.
 ```
 source install/setup.bash 
-ros2 launch aimapp nav2_humble_launch.py
+ros2 launch aimapp nav2_humble_launch.py 
 ```
 
 **Start the agent**
 ```
 source install/setup.bash 
-ros2 launch aimapp agent_launch.py
+ros2 launch aimapp agent_launch.py x:=0.0 y:=0.0
 ```
+x and y are expected to be the values of the robot odometry (simulation). As we expect the agent to start from the origin for a new exploration.
+
+If you do not initialise the robot starting pose, the topic '/odom' will be read to publish the '/agent/odom' (initialised at (0,0)) 
+This is hardcoded in code `align_odom_to_belief.py`.
+
 
 **Record position GT/believed_odom over time** (optional)
 ```
 source install/setup.bash 
-ros2 run aimapp simulation_overview_data_save.py
+ros2 run aimapp save_data.py
 ```
 
 **Start Rviz** (optional)
