@@ -8,7 +8,11 @@ class OdomShiftNode(Node):
     def __init__(self, shift_x: float, shift_y: float):
         super().__init__('odom_shift_node')
         self.shift = [-shift_x, -shift_y]
-
+        if shift_x == 0.0 and shift_y == 0.0:
+            self.shift_initialised = False
+        else:
+            self.shift_initialised = True
+            
         self.sub = self.create_subscription(
             Odometry,
             '/odom',
@@ -34,7 +38,12 @@ class OdomShiftNode(Node):
         shifted_msg.pose = msg.pose
         shifted_msg.twist = msg.twist
 
+
         self.sensor_odom= [shifted_msg.pose.pose.position.x , shifted_msg.pose.pose.position.y]
+
+        if not self.shift_initialised:
+            self.shift = [-self.sensor_odom[0], -self.sensor_odom[1]]
+            self.shift_initialised = True
 
         shifted_msg.pose.pose.position.x += self.shift[0]
         shifted_msg.pose.pose.position.y += self.shift[1]
@@ -58,7 +67,7 @@ def main(args=None):
     # print(sys.argv[1], sys.argv[2])
     shift_x = float(sys.argv[2])
     shift_y = float(sys.argv[4])
-
+    
     node = OdomShiftNode(shift_x, shift_y)
     rclpy.spin(node)
 
