@@ -1383,7 +1383,10 @@ class Ours_V5_RW(Agent):
                 #1)
                 #Is obstacle too close?
                 #print('for action', action_id, 'obstacle', obstacle_dist_per_actions[action_id], 'min_dist for new state', next_state_min_dist_to_next_node)
-                if obstacle_dist_per_actions[action_id] <=  next_state_min_dist_to_next_node :
+                if np.isnan(obstacle_dist_per_actions[action_id]):
+                    pass
+
+                elif obstacle_dist_per_actions[action_id] <=  next_state_min_dist_to_next_node :
                     no_obstacle = False 
                     #Only enforce the loop back to current pose if it's a direct motion
                     if state_step <= sure_about_data_until_this_state:
