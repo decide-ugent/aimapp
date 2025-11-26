@@ -91,9 +91,66 @@ sudo apt install gphoto2
 sudo apt install libgphoto2-6
 
 ## Start the project <a name="Start-the-project"></a>
+
+### Robot Usage - Launch Scripts for exploration
+
+For **robot deployment** (ideal in areas where obstacles can't be detected by the Lidar and we have no bumper on the robot -Husarion-). 
+
+
+#### Robot Side: `launch_all.sh`
+This script launches all necessary nodes on the robot:
+
+```bash
+cd /path/to/aimapp
+./launch_all.sh
+```
+
+This will open 8 terminal tabs with:
+- Joy2Twist gamepad controller
+- Node visualizer
+- Rosbot startup and odometry shifting (Husarion)
+- Nav2 navigation (Husarion)
+- Minimal agent
+- Data saving node
+- AIF Process action sender (interactive)
+- Goal sender terminal (interactive)
+
+**Sending navigation goals:**
+
+The nav2_client_node_goal.py runs in continuous mode, allowing multiple goals without restart. Must be adjacent nodes, this is still exploration, not goal reaching in the proper sense:
+
+```bash
+# Method 1: Using helper script
+./send_next_node_goal.sh 1    # Send goal node 1
+./send_next_node_goal.sh node_goal_as_int  
+
+# Method 2: Direct topic publish
+ros2 topic pub --once /nav2_client_goal_node std_msgs/msg/Int32 "data: 1"
+```
+
+#### Laptop Side: `launch_all_laptop.sh`
+This script launches monitoring and visualization on the laptop:
+
+```bash
+cd /path/to/aimapp
+./launch_all_laptop.sh
+```
+
+This will open 3 terminal tabs with:
+- SLAM launch
+- RViz2 with manual motion configuration
+- Odometry monitor (checks robot connection status)
+
+All logs (except odometry) are saved to `~/aimapp_logs/YYYYMMDD_HHMMSS_laptop/`
+
+The odometry monitor continuously displays position updates. If updates stop, you may have lost contact with the robot.
+---
+
+### Simulation Usage
+
 Start the world
 ```bash
-source install/setup.bash 
+source install/setup.bash
 ros2 launch aimapp warehouse_launch.py
 ```
 
