@@ -8,28 +8,26 @@ from rclpy.node import Node
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from nav2_msgs.action import NavigateToPose
-from rclpy.action import ActionClient
+from rclpy.action import ActionClient, ActionServer, GoalResponse, CancelResponse
 from rclpy.qos import QoSProfile, QoSHistoryPolicy, QoSReliabilityPolicy, QoSDurabilityPolicy
 import time
-from std_msgs.msg import Header
+from std_msgs.msg import Header, Int32
 
 import argparse
 from action_msgs.msg import GoalStatus
 
 
 class Nav2ClientGoalNode(Node):
-    def __init__(self):
+    def __init__(self, use_topic_interface=False):
         super().__init__('Nav2Client')
         self.get_logger().info('Nav2Client node has been started.')
-        # self.cli = self.create_client(PotentialField, 'potential_field')    
-        self.nav_to_pose_client = ActionClient(self, NavigateToPose, '/navigate_to_pose')   
-        # while not self.cli.wait_for_service(timeout_sec=1.0):
-        #     self.get_logger().info('service not available, waiting again...')
-        # self.req = PotentialField.Request()    
-        # 
+
+        self.nav_to_pose_client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
+
         self.motion_status = GoalStatus.STATUS_EXECUTING
         self.motion_result = None
         self.pose = None
+        self.use_topic_interface = use_topic_interface
 
         qos_profile = QoSProfile(
             history=QoSHistoryPolicy.KEEP_LAST,
@@ -41,7 +39,7 @@ class Nav2ClientGoalNode(Node):
             PoseWithCovarianceStamped,
             '/initialpose',
             qos_profile
-        )   
+        )
         self.odom_sub = self.create_subscription(
             Odometry,
             '/odometry/filtered',
@@ -51,9 +49,31 @@ class Nav2ClientGoalNode(Node):
         self.odom = None
         self.tests_directory = os.getcwd() + '/tests' #expect to be in ros directory
 
+        # Create a topic subscriber to receive goal node requests
+        if use_topic_interface:
+            self.goal_node_sub = self.create_subscription(
+                Int32,
+                '/nav2_client_goal_node',
+                self.goal_node_callback,
+                10
+            )
+            self.get_logger().info('Topic interface enabled: Subscribe to /nav2_client_goal_node to send goals')
+        else:
+            self.get_logger().info('Use command line arguments or programmatic interface to send goals')
+
     def odom_callback(self, msg):
         self.odom = msg
-    
+
+    def goal_node_callback(self, msg):
+        """
+        Callback for receiving goal node requests via topic.
+        """
+        goal_node = msg.data
+        self.get_logger().info(f'Received goal node request: {goal_node}')
+        status, pose = self.go_to_pose(goal_node)
+        self.get_logger().info(
+            f'Goal {goal_node} at pose: {pose} reached {status} with nav2')
+
     def set_initial_pose(self):
         """
         Publish the initial pose to /initialpose.
@@ -226,26 +246,41 @@ class Nav2ClientGoalNode(Node):
         return goal_reached, self.pose
     
 
-def main(node_goal):
+def main(node_goal=None, use_topic_interface=False):
     rclpy.init()
-    
-    rclpy.spin_once(Nav2ClientGoalNode(), timeout_sec=3)
-    nav_client = Nav2ClientGoalNode()
 
-    
-    status, pose = nav_client.go_to_pose(node_goal)
-    
-    nav_client.get_logger().info(
-        'Goal '+ str(node_goal) + ' at pose: ' + str(pose) + 'reached '+ str(status) +' with nav2')
-    
-    # %s' %  str(response.status))
+    nav_client = Nav2ClientGoalNode(use_topic_interface=use_topic_interface)
+
+    if use_topic_interface:
+        # Keep spinning to receive goal requests via topic
+        nav_client.get_logger().info('Nav2 Client running in continuous mode. Send goals via topic /nav2_client_goal_node')
+        nav_client.get_logger().info('Example: ros2 topic pub /nav2_client_goal_node std_msgs/msg/Int32 "data: 1"')
+        try:
+            rclpy.spin(nav_client)
+        except KeyboardInterrupt:
+            nav_client.get_logger().info('Shutting down Nav2 Client...')
+    elif node_goal is not None:
+        # Single goal mode (original behavior)
+        status, pose = nav_client.go_to_pose(node_goal)
+        nav_client.get_logger().info(
+            'Goal '+ str(node_goal) + ' at pose: ' + str(pose) + 'reached '+ str(status) +' with nav2')
+    else:
+        nav_client.get_logger().error('No goal provided and topic interface not enabled!')
 
     nav_client.destroy_node()
     rclpy.shutdown()
 
 if __name__ == '__main__':
-    
+
     parser = argparse.ArgumentParser(description='Reach position x,y')
-    parser.add_argument('--node', type=int, default=0.0,  help='node goal')
+    parser.add_argument('--node', type=int, default=None, help='node goal (single goal mode)')
+    parser.add_argument('--continuous', action='store_true', help='Enable continuous mode using topic interface')
     args = parser.parse_args()
-    main(args.node)
+
+    if args.continuous:
+        main(use_topic_interface=True)
+    elif args.node is not None:
+        main(node_goal=args.node)
+    else:
+        parser.print_help()
+        print("\nError: Either provide --node <goal_id> for single goal or --continuous for continuous mode")

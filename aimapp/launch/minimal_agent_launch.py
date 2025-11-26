@@ -31,8 +31,19 @@ def generate_launch_description():
             #     ('/scan', '/scan'),
             # ]
         )
+    
+    goal_client = Node(
+            package='aimapp',
+            executable='nav2_client_node_goal.py',
+            arguments=['-continuous',True]
+            # namespace='agent',
+            # remappings=[
+            #     ('/odom','/odometry/filtered'),
+            #     ('/scan', '/scan'),
+            # ]
+        )
 
     ld.add_action(aif_process)
     ld.add_action(panorama_360_action)
-    # ld.add_action(rosbag)
+    ld.add_action(goal_client)
     return ld
