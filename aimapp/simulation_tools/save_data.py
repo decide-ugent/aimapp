@@ -3,7 +3,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, Int16
 from nav_msgs.msg import Odometry, OccupancyGrid
 from visualization_msgs.msg import MarkerArray
 
@@ -81,6 +81,13 @@ class DataSaver(Node):
             10
         )
 
+        self.action_sub = self.create_subscription(
+            Int16,
+            '/executed_action',
+            self.exec_action_callback,
+            10
+        )
+
 
         
         experiment = 'ours'
@@ -113,8 +120,11 @@ class DataSaver(Node):
         self.cpu = None
         self.ram_per = None
         self.ram_used = None
+        self.executed_action = None
 
-
+    def exec_action_callback(self, msg):
+        self.executed_action = int(msg.data)
+        
     def odom_callback(self, msg):
 
         robot_x = np.round(msg.pose.pose.position.x,2)
@@ -251,6 +261,7 @@ class DataSaver(Node):
             # Define the headers
             headers = [
                 "Time", 
+                "executed_action",
                 "odom", 
                 "husarion_odom",
                 "gt_odom",
@@ -286,6 +297,11 @@ class DataSaver(Node):
             writer = csv.writer(csv_file)
             row_data = [self.current_time]
 
+            if self.executed_action:
+                row_data.extend([self.executed_action])
+                self.executed_action = None
+            else:
+                row_data.extend([None])
             # Odometry data
             if self.odom:
                 row_data.extend([self.odom])

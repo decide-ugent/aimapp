@@ -7,7 +7,7 @@ from rclpy.node import Node
 from rclpy.action import ActionServer, GoalResponse, CancelResponse
 from pathlib import Path
 from visualization_msgs.msg import Marker
-from std_msgs.msg import Bool
+from std_msgs.msg import Int16
 from geometry_msgs.msg import Point, PoseStamped
 from nav_msgs.msg import Odometry
 # from sensor_msgs.msg import LaserScan
@@ -31,7 +31,9 @@ class AIFProcessServer(Node):
         self.robot_pose = []
         
         self.influence_radius = 2
-        self.robot_dim = 0.3
+        self.robot_dim = 0.25
+        self.model_imagine_next_action = False
+
         self.poses = []
         self.img_bridge = CvBridge()
         qos_policy = rclpy.qos.QoSProfile(
@@ -50,6 +52,12 @@ class AIFProcessServer(Node):
         self.goal_pub = self.create_publisher(
             Marker,
             '/goal_pose_marker',
+            qos_policy
+        )
+
+        self.executed_action_pub = self.create_publisher(
+            Int16,
+            '/executed_action',
             qos_policy
         )
 
@@ -108,13 +116,14 @@ class AIFProcessServer(Node):
             self.set_navigation_mode()
             #self.save_new_model_next_step()
             
-
+        
 
         next_possible_actions = self.model.define_next_possible_actions(obstacle_dist_per_actions, restrictive=True,logs=self.get_logger())
+        ideal_next_action = [-1]
+        if self.model_imagine_next_action :
+            ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[self.last_ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger())
 
-        ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[self.last_ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger())
-
-        self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
+            self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
         
         reachable_points = []
         self.get_logger().info('AIF setup at path %s' % self.test_folder)
@@ -250,6 +259,11 @@ class AIFProcessServer(Node):
 
         goal_action = goal_handle.request.action
         goal_success = goal_handle.request.goal_reached
+        self.executed_action = Int16() #safety 
+        self.executed_action = goal_action
+        self.executed_action_pub.publish(self.executed_action)
+        self.executed_action_pub.publish(self.executed_action) #safety
+        self.executed_action_pub.publish(self.executed_action) #safety
         result = AIFProcess.Result()
 
         self.load_latest_model()
@@ -266,19 +280,23 @@ class AIFProcessServer(Node):
             self.model.update_B_given_unreachable_pose(next_pose, goal_action) 
             possible_actions = self.model.define_next_possible_actions(self.prev_scans_dist, restrictive=True, logs=self.get_logger())
             possible_actions.remove(goal_action)
-            ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[self.last_ob_id],next_possible_actions=possible_actions, save_action_memory = False, logging= self.get_logger())
-            elasped_time = time.time() - self.start_time
+
+            if self.model_imagine_next_action:
+                ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[self.last_ob_id],next_possible_actions=possible_actions, save_action_memory = False, logging= self.get_logger())
+                self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
+                next_pose, next_pose_id = self.model.determine_next_pose(ideal_next_action[0])
+                self.pub_goal_pose(next_pose)
+                
+            elapsed_time = time.time() - self.start_time
             self.save_model(self.test_folder)
-            save_failed_step_data(copy.deepcopy(self.model), self.last_ob_id, np.array([0,0]), [0], possible_actions, self.prev_scans_dist, self.robot_pose, action_success=False, elapsed_time=elasped_time, store_path=self.test_folder, action_select_data=data)
+            save_failed_step_data(copy.deepcopy(self.model), self.last_ob_id, np.array([0,0]), [0], possible_actions, self.prev_scans_dist, self.robot_pose, action_success=False, elapsed_time=elapsed_time, store_path=self.test_folder, action_select_data=data)
 
-            self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
-
+            
+            
             result.possible_actions = possible_actions
             result.reachable_goals = [Point()]
             #GOAL POSE
-            next_pose, next_pose_id = self.model.determine_next_pose(ideal_next_action[0])
-            self.pub_goal_pose(next_pose)
-
+            
 
             goal_handle.succeed()
             
@@ -299,12 +317,14 @@ class AIFProcessServer(Node):
         
         start_execution_time = time.time()
         next_possible_actions = self.model.define_next_possible_actions(obstacle_dist_per_actions, restrictive=True,logs=self.get_logger())
-        ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger())
+        ideal_next_action = [-1]
+        if self.model_imagine_next_action:
+            ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger())
 
-        self.execution_time += time.time() - start_execution_time
-        self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
-        elasped_time = time.time() - self.start_time
-        self.save_data_process(ob_id, ob_match_score, obstacle_dist_per_actions=obstacle_dist_per_actions, elasped_time=elasped_time, data= data)
+            self.execution_time += time.time() - start_execution_time
+            self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
+        elapsed_time = time.time() - self.start_time
+        self.save_data_process(ob_id, ob_match_score, obstacle_dist_per_actions=obstacle_dist_per_actions, elapsed_time=elapsed_time, data= data)
 
         self.prev_scans_dist = obstacle_dist_per_actions
         self.last_ob_id = ob_id
@@ -345,7 +365,7 @@ class AIFProcessServer(Node):
         pickle_dump_model(self.model, path)
 
     def save_data_process(self, ob_id:int, ob_match_score:list,\
-                      obstacle_dist_per_actions:list,elasped_time:float, data:dict=None):
+                      obstacle_dist_per_actions:list,elapsed_time:float, data:dict=None):
 
         ob = self.Views.views[ob_id].full_ob
         if self.robot_pose is not None and len(self.robot_pose) >= 2 :
