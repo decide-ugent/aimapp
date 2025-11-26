@@ -40,6 +40,7 @@ install(PROGRAMS
   aimapp/motion/move_straight_client.py
   aimapp/motion/move_straight_action.py
   aimapp/motion/nav2_client.py
+  aimapp/motion/nav2_client_node_goal.py
   aimapp/motion/align_odom_to_belief.py
   aimapp/obs_transf/get_panorama_action.py
   aimapp/obs_transf/get_panorama_client.py

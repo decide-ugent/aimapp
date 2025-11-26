@@ -136,7 +136,7 @@ class AIFProcessServer(Node):
             pt.y = float(next_pose[1])
             reachable_points.append(pt)
             self.publish_vector(next_pose[0], next_pose[1], self.actions_pub[a])
-            self.get_logger().info('possible action %d poses %s' % (a, str(next_pose)))
+            self.get_logger().info('possible action %d, next node %d and pose %s' % (a, next_pose_id, str(next_pose)))
             if a == ideal_next_action[0]:
                 #GOAL POSE
                 self.pub_goal_pose(next_pose)
@@ -337,7 +337,7 @@ class AIFProcessServer(Node):
             pt.y = next_pose[1]
             reachable_points.append(pt)
             self.publish_vector(next_pose[0], next_pose[1], self.actions_pub[a])
-            self.get_logger().info('possible action %d poses %s' % (a, str(next_pose)))
+            self.get_logger().info('possible action %d next node %d and pose %s' % (a, next_pose_id, str(next_pose)))
             if a == ideal_next_action[0]:
                 self.pub_goal_pose(next_pose)
                 # self.get_logger().info(f'Publishing goal pose {next_pose} for action {a}')
