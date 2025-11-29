@@ -34,8 +34,8 @@ def generate_launch_description():
     
     goal_client = Node(
             package='aimapp',
-            executable='nav2_client_node_goal.py',
-            arguments=['-continuous',True]
+            executable='nav2_client.py',
+            arguments=['-continuous', 'True']
             # namespace='agent',
             # remappings=[
             #     ('/odom','/odometry/filtered'),

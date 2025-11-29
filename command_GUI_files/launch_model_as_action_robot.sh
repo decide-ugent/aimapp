@@ -77,11 +77,24 @@ sleep 2
 
 sleep 2
 
-# Terminal 8: Interactive terminal for sending goals
-gnome-terminal --tab --title="Send-Goals" -- bash -c "
+# Terminal 8: Action Selector GUI - for selecting from possible actions
+gnome-terminal --tab --title="Action-Selector-GUI" -- bash -c "
+echo 'Starting Action Selector GUI...'
+echo 'This GUI will display possible actions from AIF Process'
+echo 'and allow you to select which node to navigate to next.'
+echo ''
+python3 src/aimapp/command_GUI_files/action_selector_with_subscriber.py 2>&1
+exec bash"
+
+sleep 2
+
+# Terminal 9: Interactive terminal for sending goals (backup/manual method)
+gnome-terminal --tab --title="Send-Goals-Manual" -- bash -c "
 echo '=========================================='
-echo 'Terminal for sending navigation goals'
+echo 'Manual Terminal for sending navigation goals'
 echo '=========================================='
+echo ''
+echo 'RECOMMENDED: Use the Action Selector GUI instead!'
 echo ''
 echo '' ## OPTION 1 ##
 echo 'The nav2_client_node_goal.py is running in continuous mode.'
@@ -96,7 +109,7 @@ echo '' ## OPTION 2 ##
 echo '' Use /send_goal.sh node_goal
 echo ''
 echo 'Example commands:'
-echo '' /send_goal.sh 3  
+echo '' /send_goal.sh 3
 echo '=========================================='
 echo ''
 exec bash"

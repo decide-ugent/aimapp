@@ -7,7 +7,7 @@ from rclpy.node import Node
 from rclpy.action import ActionServer, GoalResponse, CancelResponse
 from pathlib import Path
 from visualization_msgs.msg import Marker
-from std_msgs.msg import Int16
+from std_msgs.msg import Int16, Int32MultiArray, Float64MultiArray
 from geometry_msgs.msg import Point, PoseStamped
 from nav_msgs.msg import Odometry
 # from sensor_msgs.msg import LaserScan
@@ -58,6 +58,25 @@ class AIFProcessServer(Node):
         self.executed_action_pub = self.create_publisher(
             Int16,
             '/executed_action',
+            qos_policy
+        )
+
+        # Publishers for GUI integration - publish possible actions and nodes
+        self.possible_actions_pub = self.create_publisher(
+            Int32MultiArray,
+            '/aif_possible_actions',
+            qos_policy
+        )
+
+        self.possible_nodes_pub = self.create_publisher(
+            Int32MultiArray,
+            '/aif_possible_nodes',
+            qos_policy
+        )
+
+        self.reachable_goals_pub = self.create_publisher(
+            Float64MultiArray,
+            '/aif_reachable_goals',
             qos_policy
         )
 
@@ -127,6 +146,7 @@ class AIFProcessServer(Node):
         
         reachable_points = []
         self.get_logger().info('AIF setup at path %s' % self.test_folder)
+        next_possible_nodes = []
         for a in next_possible_actions:
             next_pose, next_pose_id = self.model.determine_next_pose(a)
             pt = Point()
@@ -137,10 +157,14 @@ class AIFProcessServer(Node):
             reachable_points.append(pt)
             self.publish_vector(next_pose[0], next_pose[1], self.actions_pub[a])
             self.get_logger().info('possible action %d, next node %d and pose %s' % (a, next_pose_id, str(next_pose)))
+            next_possible_nodes.append(next_pose_id)
             if a == ideal_next_action[0]:
                 #GOAL POSE
                 self.pub_goal_pose(next_pose)
-        
+
+        # Publish possible actions, nodes, and goals for GUI
+        self.publish_possible_actions_nodes(next_possible_actions, next_possible_nodes, reachable_points)
+
         self.action_server = ActionServer(
             self,
             AIFProcess,
@@ -190,6 +214,27 @@ class AIFProcessServer(Node):
         goal_pose.color.b = 0.0
         self.get_logger().info(f'Publishing goal pose at {pose}')
         self.goal_pub.publish(goal_pose)
+
+    def publish_possible_actions_nodes(self, actions, nodes, reachable_points):
+        """ Publish possible actions, nodes, and reachable goal coordinates for GUI """
+        actions_msg = Int32MultiArray()
+        actions_msg.data = actions
+        self.possible_actions_pub.publish(actions_msg)
+
+        nodes_msg = Int32MultiArray()
+        nodes_msg.data = nodes
+        self.possible_nodes_pub.publish(nodes_msg)
+
+        # Flatten reachable_points (list of Point objects) to [x1, y1, x2, y2, ...]
+        goals_msg = Float64MultiArray()
+        goals_coords = []
+        for pt in reachable_points:
+            goals_coords.append(float(pt.x))
+            goals_coords.append(float(pt.y))
+        goals_msg.data = goals_coords
+        self.reachable_goals_pub.publish(goals_msg)
+
+        self.get_logger().info(f'Published {len(actions)} possible actions, {len(nodes)} nodes, and {len(reachable_points)} goals to GUI topics')
 
 
     def initialise_model(self, n_actions:int)-> None:
@@ -330,6 +375,7 @@ class AIFProcessServer(Node):
         self.last_ob_id = ob_id
 
         reachable_points = []
+        next_possible_nodes = []
         for a in next_possible_actions:
             next_pose, next_pose_id = self.model.determine_next_pose(a)
             pt = Point()
@@ -338,12 +384,16 @@ class AIFProcessServer(Node):
             reachable_points.append(pt)
             self.publish_vector(next_pose[0], next_pose[1], self.actions_pub[a])
             self.get_logger().info('possible action %d next node %d and pose %s' % (a, next_pose_id, str(next_pose)))
+            next_possible_nodes.append(next_pose_id)
             if a == ideal_next_action[0]:
                 self.pub_goal_pose(next_pose)
                 # self.get_logger().info(f'Publishing goal pose {next_pose} for action {a}')
-    
+
+        # Publish possible actions, nodes, and goals for GUI
+        self.publish_possible_actions_nodes(next_possible_actions, next_possible_nodes, reachable_points)
 
         result.possible_actions = next_possible_actions
+        result.possibles_nodes = next_possible_nodes
         result.reachable_goals = reachable_points
         goal_handle.succeed()
         self.get_logger().info(f'Returning {len(reachable_points)} reachable poses.')
