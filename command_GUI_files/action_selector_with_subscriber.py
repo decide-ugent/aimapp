@@ -303,10 +303,11 @@ class ActionSelectorGUI(Node):
         goal_msg.pose.position.z = 0.0
         goal_msg.pose.orientation.w = 1.0  # No rotation
 
+        # Publish once (nav2_client will handle it)
         self.goal_pose_pub.publish(goal_msg)
+        self.log_message(f"Published pose to /nav2_client_goal_pose topic")
 
-        self.log_message(f"Published pose ({goal_coords[0]:.2f}, {goal_coords[1]:.2f}) to /nav2_client_goal_pose topic")
-        self.log_message(f"Navigation to pose initiated!")
+        self.log_message(f"Navigation to pose ({goal_coords[0]:.2f}, {goal_coords[1]:.2f}) initiated!")
 
     def on_closing(self):
         """Handle window closing"""

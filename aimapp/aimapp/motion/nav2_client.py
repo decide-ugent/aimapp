@@ -13,6 +13,7 @@ import threading
 
 import argparse
 from action_msgs.msg import GoalStatus
+from aimapp_actions.msg import NavigationResult
 
 
 class Nav2Client(Node):
@@ -50,6 +51,13 @@ class Nav2Client(Node):
         )
         self.odom = None
 
+        # Publisher for navigation results
+        self.nav_result_pub = self.create_publisher(
+            NavigationResult,
+            '/nav2_navigation_result',
+            qos_profile
+        )
+
         # Subscribe to pose goals if in continuous mode
         if self.continuous:
             self.pose_goal_sub = self.create_subscription(
@@ -59,6 +67,10 @@ class Nav2Client(Node):
                 10
             )
             self.get_logger().info('Continuous mode enabled: Listening for pose goals on /nav2_client_goal_pose')
+
+            # Store the goal pose for result publishing
+            self.current_goal_pose = None
+            self.navigation_in_progress = False
 
 
     def odom_callback(self, msg):
@@ -107,8 +119,10 @@ class Nav2Client(Node):
     def goal_response_callback(self, future):
         """ Get regular goal_responses"""
 
-        self.set_initial_pose()
-        time.sleep(1)
+        # Don't call set_initial_pose here - it causes blocking issues
+        # self.set_initial_pose()
+        # time.sleep(1)
+
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.get_logger().info('Goal nav2 rejected :(')
@@ -116,14 +130,17 @@ class Nav2Client(Node):
             return False, [0,0]
 
         self.get_logger().info('Goal nav2 accepted :)')
+        self.motion_status = GoalStatus.STATUS_ACCEPTED  # Set to 2
         self._get_result_future = goal_handle.get_result_async()
         self._get_result_future.add_done_callback(self.get_result_callback)
+        self.get_logger().info('Waiting for navigation to complete...')
 
     def get_result_callback(self, future):
         """ Get pano action result"""
         result = future.result().result
-        # self.get_logger().info('Result: {0}'.format(result.sequence))
-        self.motion_status = future.result().status 
+        status = future.result().status
+        self.get_logger().info(f'Navigation result received! Status: {status}')
+        self.motion_status = status
         self.motion_result = result
 
     def feedback_callback(self, feedback_msg):
@@ -141,21 +158,131 @@ class Nav2Client(Node):
     def pose_goal_callback(self, msg):
         """
         Callback when a new pose goal is received (continuous mode only).
-        Sends the pose to Nav2.
+        Sends the pose to Nav2 and waits for result in a separate thread.
         """
         pose = [msg.pose.position.x, msg.pose.position.y]
 
-        with self.goal_lock:
-            self.get_logger().info(f'Received pose goal: x={pose[0]:.2f}, y={pose[1]:.2f}')
-            self.get_logger().info(f'Sending goal to Nav2...')
+        self.get_logger().info(f'Received pose goal: x={pose[0]:.2f}, y={pose[1]:.2f}')
 
-            # Send goal asynchronously
-            future = self.send_goal(pose)
+        # Check if navigation is already in progress
+        if self.navigation_in_progress:
+            self.get_logger().warn(f'Navigation already in progress, ignoring new goal: {pose}')
+            return
 
-            if future is not None:
-                self.get_logger().info(f'Goal sent successfully')
+        # Store the goal pose for result publishing
+        self.current_goal_pose = pose.copy()
+        self.navigation_in_progress = True
+
+        # Start navigation in a separate thread to avoid blocking
+        nav_thread = threading.Thread(target=self.navigate_and_publish_result, args=(pose,))
+        nav_thread.daemon = True
+        nav_thread.start()
+
+    def navigate_and_publish_result(self, goal_pose):
+        """
+        Navigate to the goal and publish the result when complete.
+        This runs in a separate thread.
+        """
+        try:
+            self.get_logger().info(f'Starting navigation to x={goal_pose[0]:.2f}, y={goal_pose[1]:.2f}')
+
+            # Send goal asynchronously (don't use go_to_pose as it blocks)
+            if not self.nav_to_pose_client.wait_for_server(timeout_sec=5.0):
+                self.get_logger().error('NavigateToPose action server not available!')
+                return
+
+            goal_msg = NavigateToPose.Goal()
+            goal_msg.pose.header.frame_id = "map"
+            goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
+            goal_msg.pose.pose.position.x = goal_pose[0]
+            goal_msg.pose.pose.position.y = goal_pose[1]
+
+            self.get_logger().info(f'Sending nav2 goal as x: {goal_pose[0]}, y: {goal_pose[1]}.')
+            self.motion_status = GoalStatus.STATUS_EXECUTING
+            
+            send_goal_future = self.nav_to_pose_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
+            send_goal_future.add_done_callback(self.goal_response_callback)
+
+            # Wait for goal to be accepted first
+            self.get_logger().info('Waiting for goal to be accepted by Nav2...')
+            goal_timeout = 10.0
+            goal_start = time.time()
+            while send_goal_future.done() is False:
+                if time.time() - goal_start > goal_timeout:
+                    self.get_logger().error('Timeout waiting for goal acceptance')
+                    return
+                time.sleep(0.1)
+
+            self.get_logger().info(f'Goal accepted, status after acceptance: {self.motion_status}')
+
+            # Wait a bit more for the result future to be set up
+            time.sleep(0.5)
+
+            # Check if we have a result future
+            if not hasattr(self, '_get_result_future') or self._get_result_future is None:
+                self.get_logger().error('Result future was not set up properly!')
+                return
+
+            self.get_logger().info('Result future is set up, monitoring for completion...')
+
+            # Wait for the navigation to complete by polling motion_status
+            # The callbacks will update motion_status when navigation completes
+            self.get_logger().info(f'Starting to monitor navigation status (current: {self.motion_status})')
+            timeout = 120.0  # 2 minutes timeout
+            start_time = time.time()
+
+            while self.motion_status <= 3 and self.motion_status > 0:
+                # Also check if result future is done
+                if hasattr(self, '_get_result_future') and self._get_result_future.done():
+                    self.get_logger().info('Result future completed, checking status...')
+                    break
+
+                if time.time() - start_time > timeout:
+                    self.get_logger().warn('Navigation timeout reached')
+                    break
+                time.sleep(0.1)
+                if (time.time() - start_time) % 5.0 < 0.1:  # Log every 5 seconds
+                    self.get_logger().info(f'Still navigating... status: {self.motion_status}')
+
+            # Force check the result future one more time
+            if hasattr(self, '_get_result_future') and self._get_result_future.done():
+                try:
+                    result = self._get_result_future.result()
+                    self.motion_status = result.status
+                    self.get_logger().info(f'Manually retrieved result status: {self.motion_status}')
+                except Exception as e:
+                    self.get_logger().error(f'Error retrieving result: {e}')
+
+            # Determine if goal was reached
+            if self.motion_status == 4:  # SUCCEEDED
+                goal_reached = True
+                self.get_logger().info(f'Goal {goal_pose} reached with nav2')
             else:
-                self.get_logger().error('Failed to send goal to Nav2')
+                goal_reached = False
+                self.get_logger().warn(f'Goal not reached with nav2, status: {self.motion_status}')
+
+            # Get final pose from feedback
+            final_pose = self.pose if self.pose is not None else [0.0, 0.0]
+
+            # Publish navigation result
+            result_msg = NavigationResult()
+            result_msg.goal_reached = goal_reached
+            result_msg.final_pose_x = float(final_pose[0])
+            result_msg.final_pose_y = float(final_pose[1])
+            result_msg.goal_pose_x = float(goal_pose[0])
+            result_msg.goal_pose_y = float(goal_pose[1])
+
+            self.nav_result_pub.publish(result_msg)
+            self.get_logger().info(f'Published navigation result #{i+1}: goal_reached={goal_reached}, '
+                                    f'final_pose=[{final_pose[0]:.2f}, {final_pose[1]:.2f}]')
+            time.sleep(0.1)
+
+            self.get_logger().info(f'Navigation complete: goal_reached={goal_reached}')
+
+        finally:
+            # Always reset the flag when done (even if there was an error)
+            self.navigation_in_progress = False
+            self.get_logger().info('Navigation thread completed, ready for new goals')
 
 
     def send_goal(self, pose):
@@ -244,6 +371,6 @@ if __name__ == '__main__':
     parser.add_argument('--x', type=float, default=0.0,  help='x goal value')
     parser.add_argument('--y', type=float, default=0.0,  help='y goal value')
     parser.add_argument('--t', type=str, default='False',  help='init pose setup')
-    parser.add_argument('-continuous', '--continuous', type=bool, default=False, help='Run in continuous mode listening for pose goals')
+    parser.add_argument('-continuous', '--continuous', action='store_true', help='Run in continuous mode listening for pose goals')
     args = parser.parse_args()
     main(args.x, args.y, args.t, args.continuous)

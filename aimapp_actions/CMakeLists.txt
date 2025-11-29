@@ -10,6 +10,7 @@ find_package(action_msgs REQUIRED)
 find_package(ament_cmake REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
@@ -18,7 +19,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/PotentialField.action"
   "action/MoveStraight.action"
   "action/AIFProcess.action"
-  DEPENDENCIES geometry_msgs sensor_msgs builtin_interfaces action_msgs
+  "msg/NavigationResult.msg"
+  DEPENDENCIES std_msgs geometry_msgs sensor_msgs builtin_interfaces action_msgs
 )
 
 ament_export_dependencies(rosidl_default_runtime)

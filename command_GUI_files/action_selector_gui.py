@@ -20,7 +20,7 @@ class ActionSelectorGUI(Node):
         super().__init__('action_selector_gui')
 
         # ROS2 setup - Publisher to send selected node to nav2_client
-        self.goal_node_pub = self.create_publisher(Int32, '/nav2_client_goal_node', 10)
+        self.goal_node_pub = self.create_publisher(Int32, '/nav2_client_goal_pose', 10)
 
         # Action client to monitor AIF Process
         self.aif_action_client = ActionClient(self, AIFProcess, 'aif_process')

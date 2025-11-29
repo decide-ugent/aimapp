@@ -4,7 +4,7 @@ import sys
 import copy
 import rclpy
 from rclpy.node import Node
-from rclpy.action import ActionServer, GoalResponse, CancelResponse
+from rclpy.action import ActionServer, GoalResponse, CancelResponse, ActionClient
 from pathlib import Path
 from visualization_msgs.msg import Marker
 from std_msgs.msg import Int16, Int32MultiArray, Float64MultiArray
@@ -15,6 +15,7 @@ from cv_bridge import CvBridge
 
 from aimapp.visualisation_tools import pickle_load_model, create_save_data_dir, pickle_dump_model, save_step_data,save_failed_step_data, remove_white_border
 from aimapp_actions.action import AIFProcess  # Custom action
+from aimapp_actions.msg import NavigationResult
 from aimapp.obs_transf.observation_match import ViewMemory
 from aimapp.obs_transf.get_360_camera_client import Panorama360CamClient
 from aimapp.model.V5 import Ours_V5_RW
@@ -110,6 +111,21 @@ class AIFProcessServer(Node):
         self.start_time = time.time()
         self.execution_time = 0.0
 
+        # Store current possible actions and goals for navigation result matching
+        self.current_possible_actions = []
+        self.current_possible_nodes = []
+        self.current_reachable_goals = []
+
+        # Subscribe to navigation results
+        self.nav_result_sub = self.create_subscription(
+            NavigationResult,
+            '/nav2_navigation_result',
+            self.navigation_result_callback,
+            qos_policy
+        )
+
+        # Action client to trigger AIFProcess action
+        self.aif_action_client = ActionClient(self, AIFProcess, 'aif_process')
 
         self.goal_path = ''
      
@@ -132,10 +148,9 @@ class AIFProcessServer(Node):
             # self.last_ob_id = np.argmax(qo[0]) #might be imbricated list. to check
             self.last_ob_id = ob_id
             self.prev_scans_dist = obstacle_dist_per_actions
-            self.set_navigation_mode()
             #self.save_new_model_next_step()
             
-        
+        self.set_navigation_mode()
 
         next_possible_actions = self.model.define_next_possible_actions(obstacle_dist_per_actions, restrictive=True,logs=self.get_logger())
         ideal_next_action = [-1]
@@ -217,6 +232,11 @@ class AIFProcessServer(Node):
 
     def publish_possible_actions_nodes(self, actions, nodes, reachable_points):
         """ Publish possible actions, nodes, and reachable goal coordinates for GUI """
+        # Store data locally for navigation result matching
+        self.current_possible_actions = actions.copy()
+        self.current_possible_nodes = nodes.copy()
+        self.current_reachable_goals = [(pt.x, pt.y) for pt in reachable_points]
+
         actions_msg = Int32MultiArray()
         actions_msg.data = actions
         self.possible_actions_pub.publish(actions_msg)
@@ -236,6 +256,87 @@ class AIFProcessServer(Node):
 
         self.get_logger().info(f'Published {len(actions)} possible actions, {len(nodes)} nodes, and {len(reachable_points)} goals to GUI topics')
 
+    def navigation_result_callback(self, msg):
+        """
+        Callback when navigation result is received from nav2_client.
+        Finds the closest matching action and triggers AIFProcess action.
+        """
+        self.get_logger().info(f'Received navigation result: goal_reached={msg.goal_reached}, '
+                              f'final_pose=[{msg.final_pose_x:.2f}, {msg.final_pose_y:.2f}], '
+                              f'goal_pose=[{msg.goal_pose_x:.2f}, {msg.goal_pose_y:.2f}]')
+
+        # Find the closest matching goal from the current reachable goals
+        if len(self.current_reachable_goals) == 0:
+            self.get_logger().warn('No reachable goals stored - cannot match navigation result')
+            return
+
+        goal_pose = (msg.goal_pose_x, msg.goal_pose_y)
+
+        # Find the closest matching goal
+        min_distance = float('inf')
+        matched_index = -1
+
+        for i, stored_goal in enumerate(self.current_reachable_goals):
+            distance = np.sqrt((stored_goal[0] - goal_pose[0])**2 +
+                             (stored_goal[1] - goal_pose[1])**2)
+            if distance < min_distance:
+                min_distance = distance
+                matched_index = i
+
+        if matched_index == -1:
+            self.get_logger().error('Could not match navigation result to any stored goal')
+            return
+
+        matched_action = self.current_possible_actions[matched_index]
+        matched_node = self.current_possible_nodes[matched_index]
+        matched_goal = self.current_reachable_goals[matched_index]
+
+        self.get_logger().info(f'Matched navigation result to action {matched_action}, '
+                              f'node {matched_node}, goal {matched_goal} (distance: {min_distance:.3f}m)')
+
+        # Trigger AIFProcess action with the matched action and goal_reached status
+        self.send_aif_goal(matched_action, msg.goal_reached)
+
+    def send_aif_goal(self, action, goal_reached):
+        """
+        Send goal to AIFProcess action server.
+        """
+        if not self.aif_action_client.wait_for_server(timeout_sec=5.0):
+            self.get_logger().error('AIFProcess action server not available!')
+            return
+
+        # action_msg = Int16()
+        # action_msg.data = action
+        goal_msg = AIFProcess.Goal()
+        goal_msg.action = action
+        goal_msg.goal_reached = goal_reached
+
+        self.get_logger().info(f'Sending AIFProcess goal: action={action}, goal_reached={goal_reached}')
+
+        send_goal_future = self.aif_action_client.send_goal_async(goal_msg)
+        send_goal_future.add_done_callback(self.aif_goal_response_callback)
+
+    def aif_goal_response_callback(self, future):
+        """
+        Callback when AIFProcess goal is accepted/rejected.
+        """
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().warn('AIFProcess goal was rejected')
+            return
+
+        self.get_logger().info('AIFProcess goal accepted')
+
+        # Get result asynchronously
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(self.aif_result_callback)
+
+    def aif_result_callback(self, future):
+        """
+        Callback when AIFProcess action completes.
+        """
+        result = future.result().result
+        self.get_logger().info(f'AIFProcess action completed with {len(result.possible_actions)} possible actions')
 
     def initialise_model(self, n_actions:int)-> None:
         """ With first panorama.
@@ -303,9 +404,11 @@ class AIFProcessServer(Node):
         self.get_logger().info('Executing goal...')
 
         goal_action = goal_handle.request.action
+        if isinstance(goal_action, Int16) :
+            goal_action = goal_action.data
         goal_success = goal_handle.request.goal_reached
         self.executed_action = Int16() #safety 
-        self.executed_action = goal_action
+        self.executed_action.data = goal_action
         self.executed_action_pub.publish(self.executed_action)
         self.executed_action_pub.publish(self.executed_action) #safety
         self.executed_action_pub.publish(self.executed_action) #safety
@@ -363,6 +466,7 @@ class AIFProcessServer(Node):
         start_execution_time = time.time()
         next_possible_actions = self.model.define_next_possible_actions(obstacle_dist_per_actions, restrictive=True,logs=self.get_logger())
         ideal_next_action = [-1]
+        data = None
         if self.model_imagine_next_action:
             ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger())
 
@@ -393,7 +497,7 @@ class AIFProcessServer(Node):
         self.publish_possible_actions_nodes(next_possible_actions, next_possible_nodes, reachable_points)
 
         result.possible_actions = next_possible_actions
-        result.possibles_nodes = next_possible_nodes
+        result.possible_nodes = next_possible_nodes
         result.reachable_goals = reachable_points
         goal_handle.succeed()
         self.get_logger().info(f'Returning {len(reachable_points)} reachable poses.')
