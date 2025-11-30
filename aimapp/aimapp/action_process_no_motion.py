@@ -155,7 +155,7 @@ class AIFProcessServer(Node):
         next_possible_actions = self.model.define_next_possible_actions(obstacle_dist_per_actions, restrictive=True,logs=self.get_logger())
         ideal_next_action = [-1]
         if self.model_imagine_next_action :
-            ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[self.last_ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger())
+            ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[self.last_ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger(), plot_MCTS_tree=True)
 
             self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
         
@@ -430,7 +430,7 @@ class AIFProcessServer(Node):
             possible_actions.remove(goal_action)
 
             if self.model_imagine_next_action:
-                ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[self.last_ob_id],next_possible_actions=possible_actions, save_action_memory = False, logging= self.get_logger())
+                ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[self.last_ob_id],next_possible_actions=possible_actions, save_action_memory = False, logging= self.get_logger(), plot_MCTS_tree=True)
                 self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
                 next_pose, next_pose_id = self.model.determine_next_pose(ideal_next_action[0])
                 self.pub_goal_pose(next_pose)
@@ -468,7 +468,7 @@ class AIFProcessServer(Node):
         ideal_next_action = [-1]
         data = None
         if self.model_imagine_next_action:
-            ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger())
+            ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger(), plot_MCTS_tree=True)
 
             self.execution_time += time.time() - start_execution_time
             self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')

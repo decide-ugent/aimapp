@@ -594,6 +594,99 @@ def plot_mcts_tree(root_node):
     # plt.show()
 
 
+def plot_MCTS_heatmap(root_node):
+    """
+    Visualizes the MCTS tree as a heatmap showing state rewards.
+    Each node's state_reward is displayed as a colored cell in a grid layout.
+
+    Args:
+        root_node: The root node of the MCTS tree
+
+    Returns:
+        fig: matplotlib figure object
+    """
+    # Recursively collect all nodes and their rewards
+    node_data = {}
+    visited = set()
+
+    def collect_nodes(node, depth=0, parent_id=None, action=None):
+        if node.id in visited:
+            return
+        visited.add(node.id)
+
+        # Store node information
+        if node.id not in node_data:
+            node_data[node.id] = {
+                'reward': node.state_reward,
+                'depth': depth,
+                'parent_id': parent_id,
+                'action': action,
+                'N': node.N,
+                'avg_reward': node.total_reward / node.N if node.N > 0 else node.state_reward
+            }
+
+        # Recursively collect children
+        if node.has_children_nodes():
+            for action_id, child_node in node.childs.items():
+                collect_nodes(child_node, depth + 1, node.id, action_id)
+
+    collect_nodes(root_node)
+
+    if not node_data:
+        print("No nodes to visualize")
+        return None
+
+    # Organize nodes by depth level
+    max_depth = max(data['depth'] for data in node_data.values())
+    nodes_by_depth = {d: [] for d in range(max_depth + 1)}
+
+    for node_id, data in node_data.items():
+        nodes_by_depth[data['depth']].append((node_id, data))
+
+    # Create the heatmap matrix
+    max_width = max(len(nodes) for nodes in nodes_by_depth.values())
+    heatmap_matrix = np.zeros((max_depth + 1, max_width))
+    node_labels = [['' for _ in range(max_width)] for _ in range(max_depth + 1)]
+
+    for depth, nodes in nodes_by_depth.items():
+        for i, (node_id, data) in enumerate(nodes):
+            heatmap_matrix[depth, i] = data['reward']
+            node_labels[depth][i] = f"ID:{node_id}\nR:{data['reward']:.2f}\nN:{data['N']}"
+
+    # Replace zeros with NaN for better visualization (unfilled cells)
+    heatmap_matrix = np.where(heatmap_matrix == 0, np.nan, heatmap_matrix)
+
+    # Create the heatmap
+    fig, ax = plt.subplots(figsize=(max(12, max_width * 1.5), max(8, max_depth * 1.2)))
+
+    # Use a diverging colormap to show positive/negative rewards
+    im = ax.imshow(heatmap_matrix, cmap='RdYlGn', aspect='auto', interpolation='nearest')
+
+    # Add colorbar
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('State Reward', rotation=270, labelpad=20)
+
+    # Set axis labels
+    ax.set_xlabel('Node Position at Depth Level')
+    ax.set_ylabel('Tree Depth')
+    ax.set_yticks(range(max_depth + 1))
+    ax.set_yticklabels([f'Depth {d}' for d in range(max_depth + 1)])
+
+    # Add node labels
+    for depth in range(max_depth + 1):
+        for pos in range(max_width):
+            if node_labels[depth][pos]:
+                text = ax.text(pos, depth, node_labels[depth][pos],
+                             ha="center", va="center", color="black",
+                             fontsize=7, weight='bold',
+                             bbox=dict(boxstyle='round', facecolor='white', alpha=0.6))
+
+    ax.set_title("MCTS State Reward Heatmap\n(Model Preference Visualization)")
+    plt.tight_layout()
+
+    return fig
+
+
 #===== PLOT ALL PANORAMAS ====#
 
 def plot_panorama_memories_and_odom(hlnav_model:object) -> None:
@@ -679,7 +772,7 @@ def save_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:list, s
                         'poses', store_path)
 
     if action_select_data is not None and 'plot_MCTS_tree' in action_select_data:
-        save_MCTS_tree(action_select_data['plot_MCTS_tree'],store_path)
+        save_MCTS_heatmap(action_select_data['plot_MCTS_tree'],store_path)
 
 
 def save_pose_data(model, ob, ob_id, obstacle_dist_per_actions, gt_odom=None, store_path=None, logs=None):
@@ -722,7 +815,7 @@ def save_failed_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:
     if action_select_data is not None and 'poses_efe' in action_select_data:
         save_efe_plot(action_select_data['poses_efe'],n_steps,store_path)
     if action_select_data is not None and 'plot_MCTS_tree' in action_select_data:
-        save_MCTS_tree(action_select_data['plot_MCTS_tree'],store_path)
+        save_MCTS_heatmap(action_select_data['plot_MCTS_tree'],store_path)
     
     # save_overview_image(overview, store_path)
 
@@ -741,6 +834,12 @@ def save_MCTS_tree(root_node,store_path):
     fig = plot_mcts_tree(root_node)
     plt.savefig(str(store_path) + "/" + str("Monte Carlo Tree Search (MCTS) Visualization"))
     plt.close(fig)
+
+def save_MCTS_heatmap(root_node, store_path):
+    fig = plot_MCTS_heatmap(root_node)
+    if fig is not None:
+        plt.savefig(str(store_path) + "/" + str("MCTS_State_Reward_Heatmap.png"), dpi=150, bbox_inches='tight')
+        plt.close(fig)
 
 def save_B_transitions(model:object, store_path:Path=None) -> None:
     fig = plot_transitions(model.get_B(),model.get_agent_state_mapping(), model.possible_directions)
