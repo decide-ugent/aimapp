@@ -33,7 +33,7 @@ class AIFProcessServer(Node):
         
         self.influence_radius = 2
         self.robot_dim = 0.25
-        self.model_imagine_next_action = False
+        self.model_imagine_next_action = True
 
         self.poses = []
         self.img_bridge = CvBridge()
@@ -154,10 +154,14 @@ class AIFProcessServer(Node):
 
         next_possible_actions = self.model.define_next_possible_actions(obstacle_dist_per_actions, restrictive=True,logs=self.get_logger())
         ideal_next_action = [-1]
+        data = None
         if self.model_imagine_next_action :
-            ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[self.last_ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger(), plot_MCTS_tree=True)
+            ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[self.last_ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger(),  plot_MCTS_tree=True)
 
             self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
+        
+        self.save_data_process(ob_id, ob_match_score,\
+                      obstacle_dist_per_actions, elapsed_time=0.0,  data=data)
         
         reachable_points = []
         self.get_logger().info('AIF setup at path %s' % self.test_folder)
@@ -188,7 +192,7 @@ class AIFProcessServer(Node):
             goal_callback=self.goal_cb,
             cancel_callback=self.cancel_cb
         )
-
+        
         
         self.get_logger().info('action server aif_process setup')
 
@@ -355,8 +359,7 @@ class AIFProcessServer(Node):
         self.model.update_transition_nodes(obstacle_dist_per_actions=obstacle_dist_per_actions, logs=self.get_logger())
         self.model.update_C_dim()
         self.save_model(self.test_folder)
-        self.save_data_process(ob_id, ob_match_score,\
-                      obstacle_dist_per_actions, None)
+        
         
 
         return obstacle_dist_per_actions, ob_id, ob_match_score

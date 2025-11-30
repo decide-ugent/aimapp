@@ -594,94 +594,144 @@ def plot_mcts_tree(root_node):
     # plt.show()
 
 
-def plot_MCTS_heatmap(root_node):
+def plot_MCTS_heatmap(root_node, model):
     """
-    Visualizes the MCTS tree as a heatmap showing state rewards.
-    Each node's state_reward is displayed as a colored cell in a grid layout.
+    Visualizes the MCTS tree as a spatial heatmap showing state rewards.
+    Uses actual node positions from the model's PoseMemory to create a smooth gradient heatmap.
 
     Args:
         root_node: The root node of the MCTS tree
+        model: The model object containing PoseMemory to get node positions
 
     Returns:
         fig: matplotlib figure object
     """
     # Recursively collect all nodes and their rewards
-    node_data = {}
+    nodes_list = []
     visited = set()
 
-    def collect_nodes(node, depth=0, parent_id=None, action=None):
+    def collect_nodes(node):
         if node.id in visited:
             return
         visited.add(node.id)
 
-        # Store node information
-        if node.id not in node_data:
-            node_data[node.id] = {
+        # Get the pose for this node
+        pose = model.PoseMemory.id_to_pose(id=node.id)
+
+        if pose is not None:
+            nodes_list.append({
+                'id': node.id,
+                'x': pose[0],
+                'y': pose[1],
                 'reward': node.state_reward,
-                'depth': depth,
-                'parent_id': parent_id,
-                'action': action,
                 'N': node.N,
                 'avg_reward': node.total_reward / node.N if node.N > 0 else node.state_reward
-            }
+            })
 
         # Recursively collect children
         if node.has_children_nodes():
             for action_id, child_node in node.childs.items():
-                collect_nodes(child_node, depth + 1, node.id, action_id)
+                collect_nodes(child_node)
 
     collect_nodes(root_node)
 
-    if not node_data:
+    if not nodes_list:
         print("No nodes to visualize")
         return None
 
-    # Organize nodes by depth level
-    max_depth = max(data['depth'] for data in node_data.values())
-    nodes_by_depth = {d: [] for d in range(max_depth + 1)}
+    # Extract positions and rewards
+    x_coords = np.array([n['x'] for n in nodes_list])
+    y_coords = np.array([n['y'] for n in nodes_list])
+    rewards = np.array([n['reward'] for n in nodes_list])
 
-    for node_id, data in node_data.items():
-        nodes_by_depth[data['depth']].append((node_id, data))
+    # Create a grid for interpolation
+    x_min, x_max = x_coords.min(), x_coords.max()
+    y_min, y_max = y_coords.min(), y_coords.max()
 
-    # Create the heatmap matrix
-    max_width = max(len(nodes) for nodes in nodes_by_depth.values())
-    heatmap_matrix = np.zeros((max_depth + 1, max_width))
-    node_labels = [['' for _ in range(max_width)] for _ in range(max_depth + 1)]
+    # Add padding
+    padding = 0.5
+    x_min -= padding
+    x_max += padding
+    y_min -= padding
+    y_max += padding
 
-    for depth, nodes in nodes_by_depth.items():
-        for i, (node_id, data) in enumerate(nodes):
-            heatmap_matrix[depth, i] = data['reward']
-            node_labels[depth][i] = f"ID:{node_id}\nR:{data['reward']:.2f}\nN:{data['N']}"
+    # Create grid
+    grid_resolution = 300
+    xi = np.linspace(x_min, x_max, grid_resolution)
+    yi = np.linspace(y_min, y_max, grid_resolution)
+    xi_grid, yi_grid = np.meshgrid(xi, yi)
 
-    # Replace zeros with NaN for better visualization (unfilled cells)
-    heatmap_matrix = np.where(heatmap_matrix == 0, np.nan, heatmap_matrix)
+    # Create a Gaussian-like heatmap by computing weighted sum of Gaussians centered at each node
+    # Initialize with minimum reward value (places without nodes)
+    # Ensure background is well separated from actual values (including 0.0)
+    reward_range = rewards.max() - rewards.min()
+    # If 0.0 is in the reward range, ensure it's distinguishable from background
+    if rewards.min() <= 0.0 <= rewards.max():
+        # Set background lower than min to ensure 0.0 is visible
+        min_reward = min(rewards.min() - reward_range / 5, -reward_range / 3)
+    else:
+        min_reward = rewards.min() - reward_range / 5
 
-    # Create the heatmap
-    fig, ax = plt.subplots(figsize=(max(12, max_width * 1.5), max(8, max_depth * 1.2)))
+    zi = np.full(xi_grid.shape, min_reward)
 
-    # Use a diverging colormap to show positive/negative rewards
-    im = ax.imshow(heatmap_matrix, cmap='RdYlGn', aspect='auto', interpolation='nearest')
+    # Set the sigma for Gaussian kernels (controls the spread around each point)
+    sigma = 0.3  # Adjust this to control how localized the hotspots are
+
+    # For each node, add a Gaussian centered at its position
+    for i, node in enumerate(nodes_list):
+        # Compute distance from this node to all grid points
+        dist_sq = (xi_grid - node['x'])**2 + (yi_grid - node['y'])**2
+        # Compute Gaussian weight
+        gaussian = np.exp(-dist_sq / (2 * sigma**2))
+        # Add weighted reward to the heatmap
+        zi = np.maximum(zi, min_reward + (node['reward'] - min_reward) * gaussian)
+
+    # Create the figure
+    fig, ax = plt.subplots(figsize=(14, 10))
+
+    # Create smooth heatmap with inferno colormap
+    im = ax.imshow(zi, extent=[x_min, x_max, y_min, y_max], origin='lower',
+                   cmap='inferno', aspect='auto', interpolation='gaussian')
 
     # Add colorbar
     cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label('State Reward', rotation=270, labelpad=20)
+    cbar.set_label('State Reward', rotation=270, labelpad=20, fontsize=12)
+
+    # Overlay the actual node positions as scatter points
+    scatter = ax.scatter(x_coords, y_coords, c=rewards, cmap='inferno',
+                        s=150, edgecolors='white', linewidths=1.5, zorder=5, alpha=0.8)
+
+    # Add node ID labels with adaptive color for readability
+    # Use matplotlib's colormap to get the color at each node position
+    import matplotlib.colors as mcolors
+    norm = mcolors.Normalize(vmin=zi.min(), vmax=zi.max())
+    cmap = plt.cm.inferno
+
+    for node in nodes_list:
+        # Get the reward value at this node
+        node_reward = node['reward']
+        # Normalize the reward to [0, 1] range for colormap
+        normalized_value = norm(node_reward)
+        # Get the color from inferno colormap
+        bg_color = cmap(normalized_value)
+        # Calculate luminance to decide text color (white or black)
+        # Using relative luminance formula: 0.299*R + 0.587*G + 0.114*B
+        luminance = 0.299 * bg_color[0] + 0.587 * bg_color[1] + 0.114 * bg_color[2]
+        # If background is bright, use black text; if dark, use white text
+        text_color = 'black' if luminance > 0.5 else 'white'
+
+        ax.annotate(f"{node['id']}",
+                   xy=(node['x'], node['y']),
+                   ha='center', va='center',
+                   fontsize=9, weight='bold', color=text_color,
+                   zorder=6)
 
     # Set axis labels
-    ax.set_xlabel('Node Position at Depth Level')
-    ax.set_ylabel('Tree Depth')
-    ax.set_yticks(range(max_depth + 1))
-    ax.set_yticklabels([f'Depth {d}' for d in range(max_depth + 1)])
+    ax.set_xlabel('X', fontsize=14)
+    ax.set_ylabel('Y', fontsize=14)
+    ax.set_title("MCTS State Reward Heatmap", fontsize=16, weight='bold')
+    ax.grid(False)
 
-    # Add node labels
-    for depth in range(max_depth + 1):
-        for pos in range(max_width):
-            if node_labels[depth][pos]:
-                text = ax.text(pos, depth, node_labels[depth][pos],
-                             ha="center", va="center", color="black",
-                             fontsize=7, weight='bold',
-                             bbox=dict(boxstyle='round', facecolor='white', alpha=0.6))
-
-    ax.set_title("MCTS State Reward Heatmap\n(Model Preference Visualization)")
     plt.tight_layout()
 
     return fig
@@ -772,7 +822,7 @@ def save_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:list, s
                         'poses', store_path)
 
     if action_select_data is not None and 'plot_MCTS_tree' in action_select_data:
-        save_MCTS_heatmap(action_select_data['plot_MCTS_tree'],store_path)
+        save_MCTS_heatmap(action_select_data['plot_MCTS_tree'], model, store_path)
 
 
 def save_pose_data(model, ob, ob_id, obstacle_dist_per_actions, gt_odom=None, store_path=None, logs=None):
@@ -815,7 +865,7 @@ def save_failed_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:
     if action_select_data is not None and 'poses_efe' in action_select_data:
         save_efe_plot(action_select_data['poses_efe'],n_steps,store_path)
     if action_select_data is not None and 'plot_MCTS_tree' in action_select_data:
-        save_MCTS_heatmap(action_select_data['plot_MCTS_tree'],store_path)
+        save_MCTS_heatmap(action_select_data['plot_MCTS_tree'], model, store_path)
     
     # save_overview_image(overview, store_path)
 
@@ -835,8 +885,8 @@ def save_MCTS_tree(root_node,store_path):
     plt.savefig(str(store_path) + "/" + str("Monte Carlo Tree Search (MCTS) Visualization"))
     plt.close(fig)
 
-def save_MCTS_heatmap(root_node, store_path):
-    fig = plot_MCTS_heatmap(root_node)
+def save_MCTS_heatmap(root_node, model, store_path):
+    fig = plot_MCTS_heatmap(root_node, model)
     if fig is not None:
         plt.savefig(str(store_path) + "/" + str("MCTS_State_Reward_Heatmap.png"), dpi=150, bbox_inches='tight')
         plt.close(fig)
