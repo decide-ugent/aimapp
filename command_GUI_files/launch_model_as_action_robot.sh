@@ -7,6 +7,7 @@
 ROBOT_USER="husarion"
 ROBOT_IP="10.10.131.145"
 ROBOT_SSH="${ROBOT_USER}@${ROBOT_IP}"
+ROBOT_ROS_DIR="ros2_ws"
 
 # Create log directory
 LOG_DIR="$HOME/aimapp_logs/$(date +%Y%m%d_%H%M%S)"
@@ -38,6 +39,8 @@ echo "SSH connection verified. Launching terminals..."
 # Terminal 1: Joy2Twist gamepad controller
 gnome-terminal --tab --title="Joy2Twist" -- bash -c "
 ssh -X $ROBOT_SSH 'bash -l -c \"
+cd $ROBOT_ROS_DIR
+source install/setup.bash
 echo Starting Joy2Twist gamepad controller...;
 ros2 launch joy2twist gamepad_controller.launch.py joy2twist_params_file:=/home/husarion/joy2twist.yaml 2>&1
 \"'
@@ -48,6 +51,8 @@ sleep 2
 # Terminal 2: Node visualizer
 gnome-terminal --tab --title="Visualizer" -- bash -c "
 ssh -X $ROBOT_SSH 'bash -l -c \"
+cd $ROBOT_ROS_DIR
+source install/setup.bash
 echo Starting node visualizer...;
 ros2 run aimapp node_visualizer.py 2>&1
 \"'
@@ -58,6 +63,8 @@ sleep 2
 # Terminal 3: Start rosbot and shift odom
 gnome-terminal --tab --title="Rosbot-Odom" -- bash -c "
 ssh -X $ROBOT_SSH 'bash -l -c \"
+cd $ROBOT_ROS_DIR
+source install/setup.bash
 echo Starting rosbot...;
 bash start_rosbot.sh 2>&1;
 echo Shifting husarion odom...;
@@ -70,6 +77,8 @@ sleep 2
 # Terminal 4: Nav2 husarion launch
 gnome-terminal --tab --title="Nav2" -- bash -c "
 ssh -X $ROBOT_SSH 'bash -l -c \"
+cd $ROBOT_ROS_DIR
+source install/setup.bash
 echo Starting Nav2 husarion...;
 ros2 launch aimapp nav2_husarion_launch.py 2>&1
 \"'
@@ -80,6 +89,8 @@ sleep 2
 # Terminal 5: Minimal agent launch
 gnome-terminal --tab --title="Agent" -- bash -c "
 ssh -X $ROBOT_SSH 'bash -l -c \"
+cd $ROBOT_ROS_DIR
+source install/setup.bash
 echo Starting minimal agent...;
 ros2 launch aimapp minimal_agent_launch.py 2>&1
 \"'
@@ -90,6 +101,8 @@ sleep 2
 # Terminal 6: Save data
 gnome-terminal --tab --title="SaveData" -- bash -c "
 ssh -X $ROBOT_SSH 'bash -l -c \"
+cd $ROBOT_ROS_DIR
+source install/setup.bash
 echo Starting save data node...;
 ros2 run aimapp save_data.py 2>&1
 \"'
@@ -100,6 +113,8 @@ sleep 2
 # Terminal 7: AIF Process action (with placeholders to fill)
 gnome-terminal --tab --title="AIF-Action" -- bash -c "
 ssh -X $ROBOT_SSH 'bash -l -c \"
+cd $ROBOT_ROS_DIR
+source install/setup.bash
 echo Waiting to send AIF Process action...;
 echo Fill in the goal_reached and action values below:;
 echo   goal_reached: TOFILL;
@@ -129,24 +144,24 @@ exec bash"
 sleep 2
 
 # Terminal 9: Interactive terminal for sending goals (backup/manual method)
-gnome-terminal --tab --title="Send-Goals-Manual" -- bash -c "
-ssh -X $ROBOT_SSH 'bash -l -c \"
-echo ==========================================;
-echo Manual Terminal for sending navigation goals;
-echo ==========================================;
-echo;
-echo RECOMMENDED: Use the Action Selector GUI instead!;
-echo;
-echo The nav2_client.py is running in continuous mode.;
-echo Send pose goals using the GUI or topic interface:;
-echo;
-echo Example commands:;
-echo   ros2 topic pub --once /nav2_client_goal_pose geometry_msgs/msg/PoseStamped \\\"{header: {frame_id: map}, pose: {position: {x: 1.0, y: 2.0}, orientation: {w: 1.0}}}\\\";
-echo;
-echo ==========================================;
-echo
-\"'
-exec bash"
+# gnome-terminal --tab --title="Send-Goals-Manual" -- bash -c "
+# ssh -X $ROBOT_SSH 'bash -l -c \"
+# echo ==========================================;
+# echo Manual Terminal for sending navigation goals;
+# echo ==========================================;
+# echo;
+# echo RECOMMENDED: Use the Action Selector GUI instead!;
+# echo;
+# echo The nav2_client.py is running in continuous mode.;
+# echo Send pose goals using the GUI or topic interface:;
+# echo;
+# echo Example commands:;
+# echo   ros2 topic pub --once /nav2_client_goal_pose geometry_msgs/msg/PoseStamped \\\"{header: {frame_id: map}, pose: {position: {x: 1.0, y: 2.0}, orientation: {w: 1.0}}}\\\";
+# echo;
+# echo ==========================================;
+# echo
+# \"'
+# exec bash"
 
 echo "All terminals launched. Check logs in: $LOG_DIR"
 echo "Note: GUI runs locally, all other nodes run on robot at $ROBOT_SSH"
