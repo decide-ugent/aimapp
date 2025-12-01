@@ -152,37 +152,71 @@ class GeneratePanorama360Cam(Node):
         """This assumes a 360` lidar. Won't work with a forward lidar"""
         
         angle_min = self.last_scan.angle_min
-        angle_max = self.last_scan.angle_max
         range_max = self.last_scan.range_max
         angle_increment = self.last_scan.angle_increment 
+
         scan = [range_max if (x == np.inf or np.isnan(x)) else x for x in self.last_scan.ranges]
+
         #self.get_logger().info(f'length scan:{len(scan)}')
         lidar_dist = []
         ob_dist_per_actions = [[] for a in range(len(actions_range))] 
-        if self.tf_theta is None:
-            theta_offset = 0.0
-        else:
-            theta_offset = self.tf_theta
-        for id, scan_info in enumerate(scan):
-            
-            curr_ray_angle_rad = \
-            (self.robot_odom[2] + theta_offset + \
-             angle_min + (id * angle_increment))
-            curr_ray_angle_deg = np.rad2deg(curr_ray_angle_rad) % 360 
-            #self.get_logger().info(f'curr_ray_angle_deg, ob_dist: {id} {round(curr_ray_angle_rad,1)} {round(curr_ray_angle_deg,1)} {round(scan_info,2)}')
-            action_id = next(key for key, value in actions_range.items() if curr_ray_angle_deg >= value[0] and curr_ray_angle_deg <= value[1] )
-            if scan_info < 0.18 and curr_ray_angle_deg > 178 and curr_ray_angle_deg < 183: #Position of the camera 
-                # self.get_logger().info(f'angle:{curr_ray_angle_deg}, lidar_dist: {scan_info}') 
-                continue
-            ob_dist_per_actions[action_id].append(scan_info)
 
-        lidar_dist = [np.mean(ob_dist_per_action) for ob_dist_per_action in ob_dist_per_actions]
-        # for i in range(len(lidar_dist)):
-        #     if np.isnan(lidar_dist[i]):
-        #         self.get_logger().info('Incoming response composed of : %s data'  % (str(ob_dist_per_actions[i]))) 
-
-        # self.get_logger().info(f'lidar_dist: {lidar_dist}')
+        theta_offset = self.tf_theta if self.tf_theta is not None else 0.0
+        
+        #METHOD 2 
+        num_rays = len(scan)
+        ray_ids = np.arange(num_rays)
+        curr_ray_angles_rad = (self.robot_odom[2] + theta_offset + 
+                            angle_min + (ray_ids * angle_increment))
+        curr_ray_angles_deg = np.rad2deg(curr_ray_angles_rad) % 360
+        
+        # Build a lookup table for action_id based on angle (O(1) lookup instead of O(n))
+        # Pre-compute which action each angle belongs to
+        #we can give n_actions directly, but for now let's test it out first.
+        n_actions = len(actions_range)
+        action_ids = np.zeros(num_rays, dtype=int)
+        
+        #Simple division (fast if actions are evenly spaced)
+        zone_size = 360.0 / n_actions
+        action_ids = (curr_ray_angles_deg / zone_size).astype(int)
+        action_ids = np.clip(action_ids, 0, n_actions - 1)
+        
+        # Filter out lidar position (vectorized mask)
+        lidar_mask = ~((scan < 0.18) & (curr_ray_angles_deg > 178) & 
+                        (curr_ray_angles_deg < 183))
+        
+        # Group distances by action using list comprehension with masking
+        lidar_dist = []
+        for action_id in range(n_actions):
+            lidar_mask = (action_ids == action_id) & lidar_mask
+            distances = scan[lidar_mask]
+            lidar_dist.append(np.mean(distances) if len(distances) > 0 else range_max)
+        
         return lidar_dist
+
+
+
+        #METHOD 1 
+        # for id, scan_info in enumerate(scan):
+            
+        #     curr_ray_angle_rad = \
+        #     (self.robot_odom[2] + theta_offset + \
+        #      angle_min + (id * angle_increment))
+        #     curr_ray_angle_deg = np.rad2deg(curr_ray_angle_rad) % 360 
+        #     #self.get_logger().info(f'curr_ray_angle_deg, ob_dist: {id} {round(curr_ray_angle_rad,1)} {round(curr_ray_angle_deg,1)} {round(scan_info,2)}')
+        #     action_id = next(key for key, value in actions_range.items() if curr_ray_angle_deg >= value[0] and curr_ray_angle_deg <= value[1] )
+        #     if scan_info < 0.18 and curr_ray_angle_deg > 178 and curr_ray_angle_deg < 183: #Position of the camera 
+        #         # self.get_logger().info(f'angle:{curr_ray_angle_deg}, lidar_dist: {scan_info}') 
+        #         continue
+        #     ob_dist_per_actions[action_id].append(scan_info)
+
+        # lidar_dist = [np.mean(ob_dist_per_action) for ob_dist_per_action in ob_dist_per_actions]
+        # # for i in range(len(lidar_dist)):
+        # #     if np.isnan(lidar_dist[i]):
+        # #         self.get_logger().info('Incoming response composed of : %s data'  % (str(ob_dist_per_actions[i]))) 
+
+        # # self.get_logger().info(f'lidar_dist: {lidar_dist}')
+        # return lidar_dist
     
     def generate_action_range(self, n_actions):
         zone_range_deg = round(360/n_actions,1)
