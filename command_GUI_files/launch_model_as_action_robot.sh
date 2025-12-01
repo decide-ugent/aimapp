@@ -46,27 +46,20 @@ ros2 launch joy2twist gamepad_controller.launch.py joy2twist_params_file:=/home/
 \"'
 exec bash"
 
-sleep 2
-
-# Terminal 2: Node visualizer
-gnome-terminal --tab --title="Visualizer" -- bash -c "
-ssh -X $ROBOT_SSH 'bash -l -c \"
-cd $ROBOT_ROS_DIR
-source install/setup.bash
-echo Starting node visualizer...;
-ros2 run aimapp node_visualizer.py 2>&1
-\"'
-exec bash"
 
 sleep 2
 
 # Terminal 3: Start rosbot and shift odom
 gnome-terminal --tab --title="Rosbot-Odom" -- bash -c "
 ssh -X $ROBOT_SSH 'bash -l -c \"
-cd $ROBOT_ROS_DIR
-source install/setup.bash
 echo Starting rosbot...;
 bash start_rosbot.sh 2>&1;
+echo "To attach: tmux attach -t rosbot_startup "
+echo "To switch windows: Press Ctrl-b, then n or p"
+echo "To detach: Press Ctrl-b, then d"
+echo "To kill the session: tmux kill-session -t rosbot_startup"
+cd $ROBOT_ROS_DIR
+source install/setup.bash
 echo Shifting husarion odom...;
 ros2 run aimapp shift_husarion_odom.py 0.0 0.0 2>&1
 \"'
@@ -98,6 +91,18 @@ exec bash"
 
 sleep 2
 
+# Terminal 2: Node visualizer
+gnome-terminal --tab --title="Visualizer" -- bash -c "
+ssh -X $ROBOT_SSH 'bash -l -c \"
+cd $ROBOT_ROS_DIR
+source install/setup.bash
+echo Starting node visualizer...;
+ros2 run aimapp node_visualizer.py 2>&1
+\"'
+exec bash"
+
+sleep 2
+
 # Terminal 6: Save data
 gnome-terminal --tab --title="SaveData" -- bash -c "
 ssh -X $ROBOT_SSH 'bash -l -c \"
@@ -109,6 +114,7 @@ ros2 run aimapp save_data.py 2>&1
 exec bash"
 
 sleep 2
+
 
 # Terminal 7: AIF Process action (with placeholders to fill)
 gnome-terminal --tab --title="AIF-Action" -- bash -c "

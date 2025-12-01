@@ -13,6 +13,8 @@ def kill_gphoto2_processes():
     try:
         # Kill all running gphoto2 processes
         subprocess.run(["pkill", "-f", "gphoto2"], check=True, text=True)
+        subprocess.run(["pkill", "-f", "gvfs"], check=True, text=True)
+        subprocess.run(["pkill", "-f", "gvfsd"], check=True, text=True)
         print("Terminated any existing gphoto2 processes.")
     except subprocess.CalledProcessError:
         # Ignore error if no gphoto2 process is running
