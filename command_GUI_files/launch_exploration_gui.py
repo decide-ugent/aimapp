@@ -14,8 +14,8 @@ class ExplorationLauncherGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("AIMAPP Exploration Launcher")
-        self.root.geometry("700x550")
-        self.root.resizable(False, False)
+        self.root.geometry("750x650")
+        self.root.resizable(True, True)
 
         # Set up the UI
         self.setup_ui()

@@ -45,5 +45,5 @@ def generate_launch_description():
 
     ld.add_action(aif_process)
     ld.add_action(panorama_360_action)
-    ld.add_action(goal_client)
+    # ld.add_action(goal_client)
     return ld
