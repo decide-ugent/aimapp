@@ -84,6 +84,31 @@ class ExplorationLauncherGUI:
         )
         controlled_desc.config(state=tk.DISABLED)
 
+        # Test ID input for controlled mode
+        test_id_frame = ttk.Frame(controlled_frame)
+        test_id_frame.grid(row=2, column=0, pady=(5, 0), sticky=tk.W)
+
+        ttk.Label(
+            test_id_frame,
+            text="Test ID (optional):",
+            font=("Arial", 9)
+        ).grid(row=0, column=0, padx=(0, 10))
+
+        self.test_id_var = tk.StringVar(value="None")
+        test_id_entry = ttk.Entry(
+            test_id_frame,
+            textvariable=self.test_id_var,
+            width=15
+        )
+        test_id_entry.grid(row=0, column=1)
+
+        ttk.Label(
+            test_id_frame,
+            text="(Use existing model, e.g., '5')",
+            font=("Arial", 8),
+            foreground="gray"
+        ).grid(row=0, column=2, padx=(10, 0))
+
         # Autonomous Frame
         autonomous_frame = ttk.LabelFrame(
             main_frame,
@@ -153,9 +178,14 @@ class ExplorationLauncherGUI:
         if mode == "controlled":
             script_name = "launch_model_as_action_robot.sh"
             mode_name = "Controlled Motion Exploration"
+            # Get test_id for controlled mode
+            test_id = self.test_id_var.get().strip()
+            if not test_id or test_id.lower() == "none":
+                test_id = "None"
         else:
             script_name = "launch_autonomous_exploration.sh"
             mode_name = "Fully Autonomous Exploration"
+            test_id = None
 
         script_path = os.path.join(self.script_dir, script_name)
 
@@ -168,13 +198,15 @@ class ExplorationLauncherGUI:
             )
             return
 
+        # Prepare confirm message
+        confirm_msg = f"Launch {mode_name}?\n\n"
+        confirm_msg += f"This will execute:\n{script_name}\n"
+        if test_id and mode == "controlled":
+            confirm_msg += f"\nTest ID: {test_id}\n"
+        confirm_msg += f"\nMultiple terminal windows will open."
+
         # Confirm launch
-        confirm = messagebox.askyesno(
-            "Confirm Launch",
-            f"Launch {mode_name}?\n\n"
-            f"This will execute:\n{script_name}\n\n"
-            f"Multiple terminal windows will open."
-        )
+        confirm = messagebox.askyesno("Confirm Launch", confirm_msg)
 
         if not confirm:
             return
@@ -191,7 +223,11 @@ class ExplorationLauncherGUI:
             os.chmod(script_path, 0o755)
 
             # Launch the script from ROS workspace directory
-            subprocess.Popen(['bash', script_path], cwd=self.ros_ws_dir)
+            if mode == "controlled" and test_id:
+                # Pass test_id as argument for controlled mode
+                subprocess.Popen(['bash', script_path, test_id], cwd=self.ros_ws_dir)
+            else:
+                subprocess.Popen(['bash', script_path], cwd=self.ros_ws_dir)
 
             # Update status
             self.status_label.config(

@@ -139,10 +139,10 @@ class GeneratePanorama360Cam(Node):
         while self.last_scan is None or self.robot_odom is None:
             self.execution_rate.sleep()
         laser_compilation = self.compute_scan_dist(actions_range)
-
+        self.get_logger().info("laser_compilation:" + str(laser_compilation))
         result.panorama = images_compilation
         result.pano_scan = laser_compilation
-        self.get_logger().info("laser_compilation:" + str(laser_compilation))
+        
         self.get_logger().info('Incoming response composed of : %s data'  % (str(len(images_compilation)))) 
         goal_handle.succeed() 
         return result
@@ -191,9 +191,9 @@ class GeneratePanorama360Cam(Node):
         # Group distances by action using list comprehension with masking
         lidar_dist = []
         for action_id in range(n_actions):
-            lidar_mask = (action_ids == action_id) & lidar_mask
-            distances = scan[lidar_mask]
-            lidar_dist.append(np.mean(distances) if len(distances) > 0 else 0.25)
+            action_mask = (action_ids == action_id) & lidar_mask
+            distances = scan[action_mask]
+            lidar_dist.append(float(np.mean(distances)) if len(distances) > 0 else 0.25)
         
         return lidar_dist
 

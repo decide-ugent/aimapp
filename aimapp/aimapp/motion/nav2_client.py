@@ -273,7 +273,7 @@ class Nav2Client(Node):
             result_msg.goal_pose_y = float(goal_pose[1])
 
             self.nav_result_pub.publish(result_msg)
-            self.get_logger().info(f'Published navigation result #{i+1}: goal_reached={goal_reached}, '
+            self.get_logger().info(f'Published navigation result: goal_reached={goal_reached}, '
                                     f'final_pose=[{final_pose[0]:.2f}, {final_pose[1]:.2f}]')
             time.sleep(0.1)
 
@@ -366,11 +366,25 @@ def main(x=None, y=None, t='False', continuous=False):
         rclpy.shutdown()
 
 if __name__ == '__main__':
+    import sys
+
+    # Filter out ROS arguments before parsing
+    # ROS2 launch adds --ros-args which argparse doesn't understand
+    filtered_args = []
+    skip_next = False
+    for i, arg in enumerate(sys.argv[1:]):
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == '--ros-args':
+            # Skip everything after --ros-args
+            break
+        filtered_args.append(arg)
 
     parser = argparse.ArgumentParser(description='Reach position x,y')
     parser.add_argument('--x', type=float, default=0.0,  help='x goal value')
     parser.add_argument('--y', type=float, default=0.0,  help='y goal value')
     parser.add_argument('--t', type=str, default='False',  help='init pose setup')
     parser.add_argument('-continuous', '--continuous', action='store_true', help='Run in continuous mode listening for pose goals')
-    args = parser.parse_args()
+    args = parser.parse_args(filtered_args)
     main(args.x, args.y, args.t, args.continuous)

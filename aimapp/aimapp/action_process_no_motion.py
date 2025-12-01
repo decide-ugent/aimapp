@@ -100,7 +100,7 @@ class AIFProcessServer(Node):
             qos_profile=qos_policy
         )
         self.actions_pub = {}
-        for i in range(13):
+        for i in range(17):
             self.actions_pub[i] = self.create_publisher(
                 msg_type=PoseStamped,
                 topic="action"+str(i),
@@ -131,7 +131,7 @@ class AIFProcessServer(Node):
      
         if test_id == 'None':
             self.test_folder = create_save_data_dir()
-            obstacle_dist_per_actions, ob_id, ob_match_score = self.initialise_model(n_actions=13)
+            obstacle_dist_per_actions, ob_id, ob_match_score = self.initialise_model(n_actions=17)
             self.last_ob_id = ob_id
             self.prev_scans_dist = obstacle_dist_per_actions
 
@@ -352,7 +352,7 @@ class AIFProcessServer(Node):
         #create model
         self.model = Ours_V5_RW(num_obs=2, num_states=2, dim=2, \
                                 observations=[ob_id], \
-                                n_actions=13, influence_radius=self.influence_radius,\
+                                n_actions=17, influence_radius=self.influence_radius,\
                                 robot_dim=self.robot_dim, lookahead_node_creation= 8)
         
         self.model.set_memory_views(self.Views.get_memory_views())

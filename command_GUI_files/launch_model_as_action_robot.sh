@@ -2,6 +2,9 @@
 
 # Launch all ROS2 nodes in separate terminals with logging on remote robot
 # Created for aimapp project
+#
+# Usage: ./launch_model_as_action_robot.sh [test_id]
+# Example: ./launch_model_as_action_robot.sh 5
 
 # Robot SSH configuration
 ROBOT_USER="husarion"
@@ -9,11 +12,15 @@ ROBOT_IP="10.10.131.145"
 ROBOT_SSH="${ROBOT_USER}@${ROBOT_IP}"
 ROBOT_ROS_DIR="ros2_ws"
 
+# Get test_id from command line argument (optional)
+TEST_ID="${1:-None}"
+
 # Create log directory
 LOG_DIR="$HOME/aimapp_logs/$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$LOG_DIR"
 echo "Logs will be saved to: $LOG_DIR"
 echo "Connecting to robot at: $ROBOT_SSH"
+echo "Test ID: $TEST_ID"
 
 # Check if SSH key-based authentication is set up
 echo "Checking SSH connection..."
@@ -37,14 +44,14 @@ fi
 echo "SSH connection verified. Launching terminals..."
 
 # Terminal 1: Joy2Twist gamepad controller
-gnome-terminal --tab --title="Joy2Twist" -- bash -c "
-ssh -X $ROBOT_SSH 'bash -l -c \"
-cd $ROBOT_ROS_DIR
-source install/setup.bash
-echo Starting Joy2Twist gamepad controller...;
-ros2 launch joy2twist gamepad_controller.launch.py joy2twist_params_file:=/home/husarion/joy2twist.yaml 2>&1
-\"'
-exec bash"
+# gnome-terminal --tab --title="Joy2Twist" -- bash -c "
+# ssh -X $ROBOT_SSH 'bash -l -c \"
+# cd $ROBOT_ROS_DIR
+# source install/setup.bash
+# echo Starting Joy2Twist gamepad controller...;
+# ros2 launch joy2twist gamepad_controller.launch.py joy2twist_params_file:=/home/husarion/joy2twist.yaml 2>&1
+# \"'
+# exec bash"
 
 
 sleep 2
@@ -86,9 +93,9 @@ gnome-terminal --tab --title="Agent" -- bash -c "
 ssh -t -X $ROBOT_SSH 'bash -l -c \"
 cd $ROBOT_ROS_DIR;
 source install/setup.bash;
-echo Starting minimal agent...;
+echo Starting minimal agent with test_id=$TEST_ID...;
 echo Press Ctrl-C to stop this node;
-ros2 launch aimapp minimal_agent_launch.py 2>&1
+ros2 launch aimapp minimal_agent_launch.py test_id:=$TEST_ID 2>&1
 \"'
 exec bash"
 
