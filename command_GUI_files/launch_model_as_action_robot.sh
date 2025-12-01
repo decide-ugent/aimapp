@@ -51,16 +51,17 @@ sleep 2
 
 # Terminal 3: Start rosbot and shift odom
 gnome-terminal --tab --title="Rosbot-Odom" -- bash -c "
-ssh -X $ROBOT_SSH 'bash -l -c \"
+ssh -t -X $ROBOT_SSH 'bash -l -c \"
 echo Starting rosbot...;
 bash start_rosbot.sh 2>&1;
-echo "To attach: tmux attach -t rosbot_startup "
-echo "To switch windows: Press Ctrl-b, then n or p"
-echo "To detach: Press Ctrl-b, then d"
-echo "To kill the session: tmux kill-session -t rosbot_startup"
-cd $ROBOT_ROS_DIR
-source install/setup.bash
+echo To attach: tmux attach -t rosbot_startup;
+echo To switch windows: Press Ctrl-b, then n or p;
+echo To detach: Press Ctrl-b, then d;
+echo To kill the session: tmux kill-session -t rosbot_startup;
+cd $ROBOT_ROS_DIR;
+source install/setup.bash;
 echo Shifting husarion odom...;
+echo Press Ctrl-C to stop this node;
 ros2 run aimapp shift_husarion_odom.py 0.0 0.0 2>&1
 \"'
 exec bash"
@@ -69,10 +70,11 @@ sleep 2
 
 # Terminal 4: Nav2 husarion launch
 gnome-terminal --tab --title="Nav2" -- bash -c "
-ssh -X $ROBOT_SSH 'bash -l -c \"
-cd $ROBOT_ROS_DIR
-source install/setup.bash
+ssh -t -X $ROBOT_SSH 'bash -l -c \"
+cd $ROBOT_ROS_DIR;
+source install/setup.bash;
 echo Starting Nav2 husarion...;
+echo Press Ctrl-C to stop this node;
 ros2 launch aimapp nav2_husarion_launch.py 2>&1
 \"'
 exec bash"
@@ -81,10 +83,11 @@ sleep 2
 
 # Terminal 5: Minimal agent launch
 gnome-terminal --tab --title="Agent" -- bash -c "
-ssh -X $ROBOT_SSH 'bash -l -c \"
-cd $ROBOT_ROS_DIR
-source install/setup.bash
+ssh -t -X $ROBOT_SSH 'bash -l -c \"
+cd $ROBOT_ROS_DIR;
+source install/setup.bash;
 echo Starting minimal agent...;
+echo Press Ctrl-C to stop this node;
 ros2 launch aimapp minimal_agent_launch.py 2>&1
 \"'
 exec bash"
@@ -93,10 +96,11 @@ sleep 2
 
 # Terminal 2: Node visualizer
 gnome-terminal --tab --title="Visualizer" -- bash -c "
-ssh -X $ROBOT_SSH 'bash -l -c \"
-cd $ROBOT_ROS_DIR
-source install/setup.bash
+ssh -t -X $ROBOT_SSH 'bash -l -c \"
+cd $ROBOT_ROS_DIR;
+source install/setup.bash;
 echo Starting node visualizer...;
+echo Press Ctrl-C to stop this node;
 ros2 run aimapp node_visualizer.py 2>&1
 \"'
 exec bash"
@@ -105,10 +109,11 @@ sleep 2
 
 # Terminal 6: Save data
 gnome-terminal --tab --title="SaveData" -- bash -c "
-ssh -X $ROBOT_SSH 'bash -l -c \"
-cd $ROBOT_ROS_DIR
-source install/setup.bash
+ssh -t -X $ROBOT_SSH 'bash -l -c \"
+cd $ROBOT_ROS_DIR;
+source install/setup.bash;
 echo Starting save data node...;
+echo Press Ctrl-C to stop this node;
 ros2 run aimapp save_data.py 2>&1
 \"'
 exec bash"
@@ -118,9 +123,9 @@ sleep 2
 
 # Terminal 7: AIF Process action (with placeholders to fill)
 gnome-terminal --tab --title="AIF-Action" -- bash -c "
-ssh -X $ROBOT_SSH 'bash -l -c \"
-cd $ROBOT_ROS_DIR
-source install/setup.bash
+ssh -t -X $ROBOT_SSH 'bash -l -c \"
+cd $ROBOT_ROS_DIR;
+source install/setup.bash;
 echo Waiting to send AIF Process action...;
 echo Fill in the goal_reached and action values below:;
 echo   goal_reached: TOFILL;
@@ -129,6 +134,7 @@ echo;
 echo Example command:;
 echo ros2 action send_goal aif_process aimapp_actions/action/AIFProcess \\\"{goal_reached: true, action: 1}\\\";
 echo;
+echo Press Ctrl-C to cancel;
 read -p Press\ Enter\ to\ send\ action;
 ros2 action send_goal aif_process aimapp_actions/action/AIFProcess \\\"{goal_reached: TOFILL, action: TOFILL}\\\" 2>&1
 \"'

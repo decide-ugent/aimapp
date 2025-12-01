@@ -155,7 +155,10 @@ class GeneratePanorama360Cam(Node):
         range_max = self.last_scan.range_max
         angle_increment = self.last_scan.angle_increment 
 
-        scan = [range_max if (x == np.inf or np.isnan(x)) else x for x in self.last_scan.ranges]
+        # scan = [range_max if (x == np.inf or np.isnan(x)) else x for x in self.last_scan.ranges]
+        # Convert to NumPy array for vectorized operations
+        scan = np.array(self.last_scan.ranges)
+        scan = np.where(np.isfinite(scan), scan, range_max)
 
         #self.get_logger().info(f'length scan:{len(scan)}')
         lidar_dist = []
@@ -190,7 +193,7 @@ class GeneratePanorama360Cam(Node):
         for action_id in range(n_actions):
             lidar_mask = (action_ids == action_id) & lidar_mask
             distances = scan[lidar_mask]
-            lidar_dist.append(np.mean(distances) if len(distances) > 0 else range_max)
+            lidar_dist.append(np.mean(distances) if len(distances) > 0 else 0.25)
         
         return lidar_dist
 
