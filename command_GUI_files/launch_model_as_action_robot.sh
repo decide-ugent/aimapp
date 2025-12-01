@@ -14,6 +14,27 @@ mkdir -p "$LOG_DIR"
 echo "Logs will be saved to: $LOG_DIR"
 echo "Connecting to robot at: $ROBOT_SSH"
 
+# Check if SSH key-based authentication is set up
+echo "Checking SSH connection..."
+if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "$ROBOT_SSH" echo "SSH connection successful" 2>/dev/null; then
+    echo "ERROR: Cannot connect to robot via SSH without password."
+    echo "Please set up SSH key-based authentication first:"
+    echo ""
+    echo "1. Generate SSH key (if you don't have one):"
+    echo "   ssh-keygen -t rsa -b 4096"
+    echo ""
+    echo "2. Copy your public key to the robot:"
+    echo "   ssh-copy-id $ROBOT_SSH"
+    echo ""
+    echo "3. Test the connection:"
+    echo "   ssh $ROBOT_SSH 'echo Connection successful'"
+    echo ""
+    echo "After setting up passwordless SSH, run this script again."
+    exit 1
+fi
+
+echo "SSH connection verified. Launching terminals..."
+
 # Terminal 1: Joy2Twist gamepad controller
 gnome-terminal --tab --title="Joy2Twist" -- bash -c "
 ssh -X $ROBOT_SSH 'bash -l -c \"
