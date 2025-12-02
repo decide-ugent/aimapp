@@ -44,14 +44,14 @@ fi
 echo "SSH connection verified. Launching terminals..."
 
 # Terminal 1: Joy2Twist gamepad controller
-# gnome-terminal --tab --title="Joy2Twist" -- bash -c "
-# ssh -X $ROBOT_SSH 'bash -l -c \"
-# cd $ROBOT_ROS_DIR
-# source install/setup.bash
-# echo Starting Joy2Twist gamepad controller...;
-# ros2 launch joy2twist gamepad_controller.launch.py joy2twist_params_file:=/home/husarion/joy2twist.yaml 2>&1
-# \"'
-# exec bash"
+gnome-terminal --tab --title="Joy2Twist" -- bash -c "
+ssh -X $ROBOT_SSH 'bash -l -c \"
+cd $ROBOT_ROS_DIR
+source install/setup.bash
+echo Starting Joy2Twist gamepad controller...;
+ros2 launch joy2twist gamepad_controller.launch.py joy2twist_params_file:=/home/husarion/joy2twist.yaml 2>&1; 
+exec bash
+\"'"
 
 
 sleep 2
@@ -69,9 +69,9 @@ cd $ROBOT_ROS_DIR;
 source install/setup.bash;
 echo Shifting husarion odom...;
 echo Press Ctrl-C to stop this node;
-ros2 run aimapp shift_husarion_odom.py 0.0 0.0 2>&1
-\"'
-exec bash"
+ros2 run aimapp shift_husarion_odom.py 0.0 0.0 2>&1;
+exec bash
+\"'"
 
 sleep 2
 
@@ -82,9 +82,9 @@ cd $ROBOT_ROS_DIR;
 source install/setup.bash;
 echo Starting Nav2 husarion...;
 echo Press Ctrl-C to stop this node;
-ros2 launch aimapp nav2_husarion_launch.py 2>&1
-\"'
-exec bash"
+ros2 launch aimapp nav2_husarion_launch.py 2>&1;
+exec bash
+\"'"
 
 sleep 2
 
@@ -95,9 +95,9 @@ cd $ROBOT_ROS_DIR;
 source install/setup.bash;
 echo Starting minimal agent with test_id=$TEST_ID...;
 echo Press Ctrl-C to stop this node;
-ros2 launch aimapp minimal_agent_launch.py test_id:=$TEST_ID 2>&1
-\"'
-exec bash"
+ros2 launch aimapp minimal_agent_launch.py test_id:=$TEST_ID 2>&1;
+exec bash
+\"'"
 
 sleep 2
 
@@ -108,9 +108,9 @@ cd $ROBOT_ROS_DIR;
 source install/setup.bash;
 echo Starting node visualizer...;
 echo Press Ctrl-C to stop this node;
-ros2 run aimapp node_visualizer.py 2>&1
-\"'
-exec bash"
+ros2 run aimapp node_visualizer.py 2>&1;
+exec bash
+\"'"
 
 sleep 2
 
@@ -121,31 +121,43 @@ cd $ROBOT_ROS_DIR;
 source install/setup.bash;
 echo Starting save data node...;
 echo Press Ctrl-C to stop this node;
-ros2 run aimapp save_data.py 2>&1
-\"'
-exec bash"
+ros2 run aimapp save_data.py 2>&1; 
+exec bash
+# \"'"
+
 
 sleep 2
 
 
-# Terminal 7: AIF Process action (with placeholders to fill)
-gnome-terminal --tab --title="AIF-Action" -- bash -c "
+# Terminal 7: Nav2 Client continuous mode
+gnome-terminal --tab --title="Nav2-Client" -- bash -c "
 ssh -t -X $ROBOT_SSH 'bash -l -c \"
 cd $ROBOT_ROS_DIR;
 source install/setup.bash;
-echo Waiting to send AIF Process action...;
-echo Fill in the goal_reached and action values below:;
-echo   goal_reached: TOFILL;
-echo   action: TOFILL;
-echo;
-echo Example command:;
-echo ros2 action send_goal aif_process aimapp_actions/action/AIFProcess \\\"{goal_reached: true, action: 1}\\\";
-echo;
-echo Press Ctrl-C to cancel;
-read -p Press\ Enter\ to\ send\ action;
-ros2 action send_goal aif_process aimapp_actions/action/AIFProcess \\\"{goal_reached: TOFILL, action: TOFILL}\\\" 2>&1
-\"'
-exec bash"
+echo Starting nav2_client in continuous mode...;
+echo Press Ctrl-C to stop this node;
+ros2 run aimapp nav2_client.py --continuous 2>&1;
+exec bash
+\"'"
+
+# Terminal 7: AIF Process action (with placeholders to fill)
+# gnome-terminal --tab --title="AIF-Action" -- bash -c "
+# ssh -t -X $ROBOT_SSH 'bash -l -c \"
+# cd $ROBOT_ROS_DIR;
+# source install/setup.bash;
+# echo Waiting to send AIF Process action...;
+# echo Fill in the goal_reached and action values below:;
+# echo   goal_reached: TOFILL;
+# echo   action: TOFILL;
+# echo;
+# echo Example command:;
+# echo ros2 action send_goal aif_process aimapp_actions/action/AIFProcess \\\"{goal_reached: true, action: 1}\\\";
+# echo;
+# echo Press Ctrl-C to cancel;
+# read -p Press\ Enter\ to\ send\ action;
+# ros2 action send_goal aif_process aimapp_actions/action/AIFProcess \\\"{goal_reached: TOFILL, action: TOFILL}\\\" 2>&1
+# \"'
+# exec bash"
 
 sleep 2
 
@@ -160,7 +172,7 @@ echo ''
 python3 src/aimapp/command_GUI_files/action_selector_with_subscriber.py 2>&1
 exec bash"
 
-sleep 2
+# sleep 2
 
 # Terminal 9: Interactive terminal for sending goals (backup/manual method)
 # gnome-terminal --tab --title="Send-Goals-Manual" -- bash -c "
