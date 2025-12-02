@@ -19,7 +19,7 @@ sleep 2
 # Terminal 2: RViz2 with manual motion config
 gnome-terminal --tab --title="RViz2" -- bash -c "
 echo 'Starting RViz2 with manual_motion configuration...'
-rviz2 -d src/aimapp/aimapp/rviz/manual_motion.rviz 2>&1 | tee $LOG_DIR/rviz2.log
+rviz2 -d src/aimapp/aimapp/rviz/nav2_default_view.rviz 2>&1 | tee $LOG_DIR/rviz2.log
 exec bash"
 
 sleep 2
