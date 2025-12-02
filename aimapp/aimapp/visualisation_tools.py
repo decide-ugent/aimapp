@@ -795,8 +795,8 @@ def generate_failed_step_save_dir(n_steps: int, store_path:Path=None):
     return store_path
 
 def save_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:list, scan_dist:list, gt_odom:list, action_success:bool, elapsed_time:int,
-                 store_path:Path=None, action_select_data:dict=None, execution_time:float=np.nan)-> None:
-    
+                 store_path:Path=None, action_select_data:dict=None, execution_time:float=np.nan, map_msg=None)-> None:
+
     next_possible_actions = model.define_next_possible_actions(scan_dist)
     next_possible_nodes = {}
     for a in next_possible_actions:
@@ -804,7 +804,11 @@ def save_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:list, s
         next_possible_nodes[next_pose_id] = next_pose
     n_steps = save_data_to_excel(model, ob_id, ob, ob_match_score, next_possible_actions,
                        scan_dist,gt_odom, action_success, elapsed_time, store_path,action_select_data, execution_time, next_possible_nodes)
-    
+
+    # Save map if available (in general test directory)
+    if map_msg is not None:
+        save_map(map_msg, store_path)
+
     store_path = generate_step_save_dir(n_steps, store_path)
 
     pickle_dump_model(model, store_path)
@@ -823,6 +827,71 @@ def save_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:list, s
 
     if action_select_data is not None and 'plot_MCTS_tree' in action_select_data:
         save_MCTS_heatmap(action_select_data['plot_MCTS_tree'], model, store_path)
+
+    # Save map if available
+    if map_msg is not None:
+        save_map(map_msg, store_path)
+
+
+def save_map(map_msg, store_path: Path) -> None:
+    """
+    Save the OccupancyGrid map from SLAM/Nav2 to disk in a reusable format.
+    Saves both the map metadata (.yaml) and the map image (.pgm).
+
+    Args:
+        map_msg: OccupancyGrid message from /map topic
+        store_path: Directory to save the map files
+    """
+    import yaml
+
+    if map_msg is None:
+        return
+
+    # Extract map data
+    width = map_msg.info.width
+    height = map_msg.info.height
+    resolution = map_msg.info.resolution
+    origin = map_msg.info.origin
+
+    # Convert occupancy grid data to numpy array
+    # OccupancyGrid values: -1 (unknown), 0-100 (occupied probability)
+    # PGM format: 0 (occupied), 255 (free), 205 (unknown)
+    map_data = np.array(map_msg.data, dtype=np.int8).reshape((height, width))
+
+    # Convert to PGM format
+    pgm_data = np.zeros((height, width), dtype=np.uint8)
+    pgm_data[map_data == -1] = 205  # Unknown
+    pgm_data[map_data == 0] = 255   # Free
+    pgm_data[(map_data > 0) & (map_data <= 100)] = 0  # Occupied
+
+    # Flip vertically to match image coordinate system
+    pgm_data = np.flipud(pgm_data)
+
+    # Save PGM file (Portable Gray Map)
+    pgm_path = store_path / 'map.pgm'
+    with open(pgm_path, 'wb') as f:
+        # PGM header
+        f.write(f'P5\n'.encode())
+        f.write(f'{width} {height}\n'.encode())
+        f.write(f'255\n'.encode())
+        # Write pixel data
+        f.write(pgm_data.tobytes())
+
+    # Save YAML metadata file (compatible with Nav2/AMCL map_server)
+    yaml_path = store_path / 'map.yaml'
+    map_metadata = {
+        'image': 'map.pgm',
+        'resolution': float(resolution),
+        'origin': [float(origin.position.x), float(origin.position.y), float(origin.position.z)],
+        'negate': 0,
+        'occupied_thresh': 0.65,
+        'free_thresh': 0.196
+    }
+
+    with open(yaml_path, 'w') as f:
+        yaml.dump(map_metadata, f, default_flow_style=False)
+
+    print(f'Map saved to {yaml_path} and {pgm_path}')
 
 
 def save_pose_data(model, ob, ob_id, obstacle_dist_per_actions, gt_odom=None, store_path=None, logs=None):

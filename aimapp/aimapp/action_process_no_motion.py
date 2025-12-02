@@ -9,7 +9,7 @@ from pathlib import Path
 from visualization_msgs.msg import Marker
 from std_msgs.msg import Int16, Int32MultiArray, Float64MultiArray
 from geometry_msgs.msg import Point, PoseStamped
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, OccupancyGrid
 # from sensor_msgs.msg import LaserScan
 from cv_bridge import CvBridge
 
@@ -30,7 +30,8 @@ class AIFProcessServer(Node):
 
         self.model = None
         self.robot_pose = []
-        
+        self.latest_map = None  # Store the latest map from /map topic
+
         self.influence_radius = 2
         self.robot_dim = 0.25
         self.model_imagine_next_action = True
@@ -48,6 +49,14 @@ class AIFProcessServer(Node):
             '/odometry/shifted',
             self.odom_callback,
             10
+        )
+
+        # Subscribe to map topic
+        self.map_sub = self.create_subscription(
+            OccupancyGrid,
+            '/map',
+            self.map_callback,
+            qos_policy
         )
 
         self.goal_pub = self.create_publisher(
@@ -211,6 +220,12 @@ class AIFProcessServer(Node):
             msg.pose.pose.position.x,
             msg.pose.pose.position.y
         ])
+
+    def map_callback(self, msg):
+        """Callback to receive and store the latest map from /map topic"""
+        if self.latest_map is None:
+            self.get_logger().info('Received first map from /map topic')
+        self.latest_map = msg
 
     def goal_reached_callback(self, msg):
         self.goal_reached = msg.data
@@ -529,11 +544,12 @@ class AIFProcessServer(Node):
             robot_pose = self.robot_pose
         else:
             robot_pose = self.model.current_pose
-    
+
         self.save_model(self.test_folder)
         save_step_data(self.model, ob_id, ob, ob_match_score, obstacle_dist_per_actions,\
                     robot_pose, action_success=True, elapsed_time=elapsed_time,\
-                        store_path=self.test_folder, action_select_data=data, execution_time=self.execution_time)
+                        store_path=self.test_folder, action_select_data=data, execution_time=self.execution_time,\
+                        map_msg=self.latest_map)
         # if data is not None and 'poses_efe' in data:
         #     save_efe_plot(data['poses_efe'],self.model.get_current_timestep(),store_dir)
 
