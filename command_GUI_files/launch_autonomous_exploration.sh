@@ -2,11 +2,20 @@
 
 # Launch all ROS2 nodes for AUTONOMOUS EXPLORATION
 # Created for aimapp project
+#
+# Usage: ./launch_autonomous_exploration.sh [influence_radius] [n_actions] [lookahead_node_creation]
+# Example: ./launch_autonomous_exploration.sh 1.6 17 8
+
+# Get command line arguments (all optional with defaults)
+INFLUENCE_RADIUS="${1:-1.6}"
+N_ACTIONS="${2:-17}"
+LOOKAHEAD_NODE_CREATION="${3:-8}"
 
 # Create log directory
 LOG_DIR="$HOME/aimapp_logs/$(date +%Y%m%d_%H%M%S)_autonomous"
 mkdir -p "$LOG_DIR"
 echo "Logs will be saved to: $LOG_DIR"
+echo "Model Parameters: influence_radius=$INFLUENCE_RADIUS, n_actions=$N_ACTIONS, lookahead_node_creation=$LOOKAHEAD_NODE_CREATION"
 
 # Terminal 1: Joy2Twist gamepad controller
 gnome-terminal --tab --title="Joy2Twist" -- bash -c "
@@ -46,7 +55,8 @@ sleep 2
 gnome-terminal --tab --title="Agent-Auto" -- bash -c "
 echo 'Starting AUTONOMOUS agent...'
 echo 'The agent will explore fully autonomously without manual intervention.'
-ros2 launch aimapp agent_launch.py 2>&1 | tee $LOG_DIR/agent_launch.log
+echo 'Model Parameters: influence_radius=$INFLUENCE_RADIUS, n_actions=$N_ACTIONS, lookahead=$LOOKAHEAD_NODE_CREATION'
+ros2 launch aimapp agent_launch.py influence_radius:=$INFLUENCE_RADIUS n_actions:=$N_ACTIONS lookahead_node_creation:=$LOOKAHEAD_NODE_CREATION 2>&1 | tee $LOG_DIR/agent_launch.log
 exec bash"
 
 sleep 2

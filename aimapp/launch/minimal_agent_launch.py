@@ -1,4 +1,5 @@
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
 from launch_ros.actions import Node
 import os
 from launch.substitutions import LaunchConfiguration
@@ -9,6 +10,9 @@ def generate_launch_description():
     ld =  LaunchDescription()
 
     test_id = LaunchConfiguration('test_id', default='None')
+    influence_radius = LaunchConfiguration('influence_radius', default='1.6')
+    n_actions = LaunchConfiguration('n_actions', default='17')
+    lookahead_node_creation = LaunchConfiguration('lookahead_node_creation', default='8')
     
     panorama_360_action = Node(
             package='aimapp',
@@ -24,7 +28,10 @@ def generate_launch_description():
     aif_process = Node(
             package='aimapp',
             executable='action_process_no_motion.py',
-            arguments=['-test_id',test_id]
+            arguments=['-test_id',test_id,
+                      '-influence_radius', influence_radius,
+                      '-n_actions', n_actions,
+                      '-lookahead_node_creation', lookahead_node_creation]
             # namespace='agent',
             # remappings=[
             #     ('/odom','/odometry/filtered'),
@@ -42,6 +49,28 @@ def generate_launch_description():
             #     ('/scan', '/scan'),
             # ]
         )
+
+    # Declare launch arguments
+    ld.add_action(DeclareLaunchArgument(
+        'test_id',
+        default_value='None',
+        description='Test ID for continuing previous experiment'
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'influence_radius',
+        default_value='1.6',
+        description='Influence radius for exploration model'
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'n_actions',
+        default_value='17',
+        description='Number of actions for the exploration model'
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'lookahead_node_creation',
+        default_value='8',
+        description='Lookahead distance for node creation in exploration'
+    ))
 
     ld.add_action(aif_process)
     ld.add_action(panorama_360_action)

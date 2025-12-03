@@ -64,7 +64,7 @@ class NodeVisualizer(Node):
         
         # Model data storage
         self.current_model = None
-        self.tests_directory = "/home/husarion/ros2_ws/tests" #get_save_data_dir(
+        self.tests_directory = os.getcwd() + '/tests' #"/home/husarion/ros2_ws/tests" #get_save_data_dir(
         # self.get_logger().info(f"Checking for models in: {self.tests_directory}")
         self.last_model_timestamp = 0
         
@@ -523,20 +523,20 @@ class NodeVisualizer(Node):
             
             # Create and publish node markers
             try:
-                node_markers = self.create_node_markers(agent_state_mapping)
+                node_markers = self.create_node_markers(agent_state_mapping, frame_id='map')
                 self.nodes_pub.publish(node_markers)
                 self.get_logger().debug(f"Published {len(node_markers.markers)} node markers")
                 
                 # Create and publish connection markers if we have B matrix data
                 if B_matrix is not None and agent_state_mapping is not None :
                     connection_markers = self.create_connection_markers(
-                        agent_state_mapping, B_matrix)
+                        agent_state_mapping, B_matrix, frame_id='map')
                     self.connections_pub.publish(connection_markers)
                     self.get_logger().debug(f"Published {len(connection_markers.markers)} connection markers")
                 
                 # Create and publish robot pose marker
                 if current_pose is not None:
-                    robot_marker = self.create_robot_pose_marker(current_pose)
+                    robot_marker = self.create_robot_pose_marker(current_pose, frame_id='map')
                     self.robot_pose_pub.publish(robot_marker)
                     self.get_logger().debug(f"Published robot pose marker at {current_pose}")
                 

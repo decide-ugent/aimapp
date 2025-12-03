@@ -25,14 +25,16 @@ import cv2
 
 class AIFProcessServer(Node):
 
-    def __init__(self, test_id:int='None'):
+    def __init__(self, test_id:int='None', influence_radius:float=1.6, n_actions:int=17, lookahead_node_creation:int=8):
         super().__init__('aif_process')
 
         self.model = None
         self.robot_pose = []
         self.latest_map = None  # Store the latest map from /map topic
 
-        self.influence_radius = 1.6
+        self.influence_radius = influence_radius
+        self.n_actions = n_actions
+        self.lookahead_node_creation = lookahead_node_creation
         self.robot_dim = 0.25
         self.model_imagine_next_action = True
 
@@ -59,11 +61,7 @@ class AIFProcessServer(Node):
             qos_policy
         )
 
-        # Create client for SLAM toolbox's serialize service
-        self.slam_serialize_client = self.create_client(
-            SerializePoseGraph,
-            '/slam_toolbox/serialize_map'
-        )
+        
 
         self.goal_pub = self.create_publisher(
             Marker,
@@ -115,7 +113,7 @@ class AIFProcessServer(Node):
             qos_profile=qos_policy
         )
         self.actions_pub = {}
-        for i in range(17):
+        for i in range(self.n_actions):
             self.actions_pub[i] = self.create_publisher(
                 msg_type=PoseStamped,
                 topic="action"+str(i),
@@ -146,7 +144,7 @@ class AIFProcessServer(Node):
      
         if test_id == 'None':
             self.test_folder = create_save_data_dir()
-            obstacle_dist_per_actions, ob_id, ob_match_score = self.initialise_model(n_actions=17)
+            obstacle_dist_per_actions, ob_id, ob_match_score = self.initialise_model(n_actions=self.n_actions)
             self.last_ob_id = ob_id
             self.prev_scans_dist = obstacle_dist_per_actions
 
@@ -373,8 +371,8 @@ class AIFProcessServer(Node):
         #create model
         self.model = Ours_V5_RW(num_obs=2, num_states=2, dim=2, \
                                 observations=[ob_id], \
-                                n_actions=17, influence_radius=self.influence_radius,\
-                                robot_dim=self.robot_dim, lookahead_node_creation= 8)
+                                n_actions=self.n_actions, influence_radius=self.influence_radius,\
+                                robot_dim=self.robot_dim, lookahead_node_creation=self.lookahead_node_creation)
         
         self.model.set_memory_views(self.Views.get_memory_views())
         self.model.update_transition_nodes(obstacle_dist_per_actions=obstacle_dist_per_actions, logs=self.get_logger())
@@ -713,8 +711,32 @@ def quaternion_from_euler(roll, pitch, yaw):
 
 def main(args=None):
     rclpy.init(args=args)
-    test_id = sys.argv[2] if len(sys.argv) > 2 else 'None'
-    node = AIFProcessServer(test_id)
+
+    # Parse command line arguments
+    test_id = 'None'
+    influence_radius = 1.6
+    n_actions = 17
+    lookahead_node_creation = 8
+
+    # Parse arguments (format: -arg_name value)
+    i = 1
+    while i < len(sys.argv):
+        if sys.argv[i] == '-test_id' and i + 1 < len(sys.argv):
+            test_id = sys.argv[i + 1]
+            i += 2
+        elif sys.argv[i] == '-influence_radius' and i + 1 < len(sys.argv):
+            influence_radius = float(sys.argv[i + 1])
+            i += 2
+        elif sys.argv[i] == '-n_actions' and i + 1 < len(sys.argv):
+            n_actions = int(sys.argv[i + 1])
+            i += 2
+        elif sys.argv[i] == '-lookahead_node_creation' and i + 1 < len(sys.argv):
+            lookahead_node_creation = int(sys.argv[i + 1])
+            i += 2
+        else:
+            i += 1
+
+    node = AIFProcessServer(test_id, influence_radius, n_actions, lookahead_node_creation)
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()

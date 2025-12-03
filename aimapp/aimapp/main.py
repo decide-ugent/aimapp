@@ -25,15 +25,17 @@ os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 class HighLevelNav_ROSInterface(Node):
 
-    def __init__(self, model_dir, goal_path):
+    def __init__(self, model_dir, goal_path, influence_radius=1.6, n_actions=17, lookahead_node_creation=8):
         super().__init__('HighLevelNav_model')
         self.get_logger().info('HighLevelNav_model node has been started.')
-        
+
         self.model_dir = model_dir
         self.goal_path = goal_path
 
-        #dist motion in m 
-        self.influence_radius = 2
+        #dist motion in m
+        self.influence_radius = influence_radius
+        self.n_actions = n_actions
+        self.lookahead_node_creation = lookahead_node_creation
         self.robot_dim = 0.25
         #The lidar must say that there is X free dist behind position to consider it free #security
 
@@ -81,8 +83,8 @@ class HighLevelNav_ROSInterface(Node):
             #create model
             self.model = Ours_V5_RW(num_obs=2, num_states=2, dim=2, \
                                     observations=[ob_id], lookahead_policy=10,\
-                                    n_actions=n_actions, influence_radius=self.influence_radius,\
-                                    robot_dim=self.robot_dim, lookahead_node_creation= 8)
+                                    n_actions=self.n_actions, influence_radius=self.influence_radius,\
+                                    robot_dim=self.robot_dim, lookahead_node_creation=self.lookahead_node_creation)
             
             self.model.set_memory_views(self.Views.get_memory_views())
             self.model.update_transition_nodes(obstacle_dist_per_actions=obstacle_dist_per_actions)
@@ -346,10 +348,36 @@ def process_path(goal_path: str):
 
 def main(args=None):
     rclpy.init(args=args)
-    model_dir = sys.argv[2] if len(sys.argv) > 2 else 'None'
-    goal_path = sys.argv[4] if len(sys.argv) > 4 else 'None'
-    
-    highlevelnav = HighLevelNav_ROSInterface(model_dir, goal_path)
+
+    # Parse command line arguments
+    model_dir = 'None'
+    goal_path = 'None'
+    influence_radius = 1.6
+    n_actions = 13 # circle / 12 + STAY action
+    lookahead_node_creation = 8
+
+    # Parse arguments (format: -arg_name value)
+    i = 1
+    while i < len(sys.argv):
+        if sys.argv[i] == '-model_dir' and i + 1 < len(sys.argv):
+            model_dir = sys.argv[i + 1]
+            i += 2
+        elif sys.argv[i] == '-goal_path' and i + 1 < len(sys.argv):
+            goal_path = sys.argv[i + 1]
+            i += 2
+        elif sys.argv[i] == '-influence_radius' and i + 1 < len(sys.argv):
+            influence_radius = float(sys.argv[i + 1])
+            i += 2
+        elif sys.argv[i] == '-n_actions' and i + 1 < len(sys.argv):
+            n_actions = int(sys.argv[i + 1])
+            i += 2
+        elif sys.argv[i] == '-lookahead_node_creation' and i + 1 < len(sys.argv):
+            lookahead_node_creation = int(sys.argv[i + 1])
+            i += 2
+        else:
+            i += 1
+
+    highlevelnav = HighLevelNav_ROSInterface(model_dir, goal_path, influence_radius, n_actions, lookahead_node_creation)
    
     store_dir = create_save_data_dir()
     highlevelnav.store_dir = store_dir
@@ -359,7 +387,6 @@ def main(args=None):
     ** Initialise MODEL **
     """
 
-    possible_actions = 13 # circle / 12 + STAY action
     policy = [None] * 200
     #policy = [(1,0),(1,1),(0,1), (0,0)]
     #policy = [6, 5, 6, 0, 3, 5, 0, 1, 4, 4, 7, 4, 2, 3, 0, 6, 8, 5, 4, 4, 2, 1, 1, 4, 1, 4, 8] #an action is a direction to take in global coordinate (0:0degree in GP)
@@ -376,7 +403,7 @@ def main(args=None):
         highlevelnav.motion_client.set_initial_pose()
 
 
-    obstacle_dist_per_actions,ob_id, ob_match_score = highlevelnav.initialise_model(possible_actions)
+    obstacle_dist_per_actions,ob_id, ob_match_score = highlevelnav.initialise_model(n_actions, influence_radius, lookahead_node_creation)
 
     highlevelnav.set_navigation_mode()
     save_data_process(highlevelnav, ob_id=ob_id, ob_match_score= ob_match_score, obstacle_dist_per_actions= obstacle_dist_per_actions, store_dir=store_dir)

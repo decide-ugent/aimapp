@@ -14,7 +14,7 @@ class ExplorationLauncherGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("AIMAPP Exploration Launcher")
-        self.root.geometry("750x650")
+        self.root.geometry("750x800")
         self.root.resizable(True, True)
 
         # Set up the UI
@@ -109,13 +109,84 @@ class ExplorationLauncherGUI:
             foreground="gray"
         ).grid(row=0, column=2, padx=(10, 0))
 
+        # Model parameters frame (for both modes)
+        params_frame = ttk.LabelFrame(
+            main_frame,
+            text="Model Parameters (applies to both modes)",
+            padding="15"
+        )
+        params_frame.grid(row=3, column=0, columnspan=2, pady=(15, 0), sticky=(tk.W, tk.E))
+
+        # Influence radius
+        influence_frame = ttk.Frame(params_frame)
+        influence_frame.grid(row=0, column=0, pady=(0, 10), sticky=tk.W)
+        ttk.Label(
+            influence_frame,
+            text="Influence Radius:",
+            font=("Arial", 9)
+        ).grid(row=0, column=0, padx=(0, 10))
+        self.influence_radius_var = tk.StringVar(value="1.6")
+        ttk.Entry(
+            influence_frame,
+            textvariable=self.influence_radius_var,
+            width=10
+        ).grid(row=0, column=1)
+        ttk.Label(
+            influence_frame,
+            text="(default: 1.6)",
+            font=("Arial", 8),
+            foreground="gray"
+        ).grid(row=0, column=2, padx=(10, 0))
+
+        # Number of actions
+        n_actions_frame = ttk.Frame(params_frame)
+        n_actions_frame.grid(row=1, column=0, pady=(0, 10), sticky=tk.W)
+        ttk.Label(
+            n_actions_frame,
+            text="Number of Actions:",
+            font=("Arial", 9)
+        ).grid(row=0, column=0, padx=(0, 10))
+        self.n_actions_var = tk.StringVar(value="17")
+        ttk.Entry(
+            n_actions_frame,
+            textvariable=self.n_actions_var,
+            width=10
+        ).grid(row=0, column=1)
+        ttk.Label(
+            n_actions_frame,
+            text="(default: 17)",
+            font=("Arial", 8),
+            foreground="gray"
+        ).grid(row=0, column=2, padx=(10, 0))
+
+        # Lookahead node creation
+        lookahead_frame = ttk.Frame(params_frame)
+        lookahead_frame.grid(row=2, column=0, pady=(0, 0), sticky=tk.W)
+        ttk.Label(
+            lookahead_frame,
+            text="Lookahead Node Creation:",
+            font=("Arial", 9)
+        ).grid(row=0, column=0, padx=(0, 10))
+        self.lookahead_var = tk.StringVar(value="8")
+        ttk.Entry(
+            lookahead_frame,
+            textvariable=self.lookahead_var,
+            width=10
+        ).grid(row=0, column=1)
+        ttk.Label(
+            lookahead_frame,
+            text="(default: 8)",
+            font=("Arial", 8),
+            foreground="gray"
+        ).grid(row=0, column=2, padx=(10, 0))
+
         # Autonomous Frame
         autonomous_frame = ttk.LabelFrame(
             main_frame,
             text="Fully Autonomous Exploration",
             padding="15"
         )
-        autonomous_frame.grid(row=3, column=0, columnspan=2, pady=(0, 20), sticky=(tk.W, tk.E))
+        autonomous_frame.grid(row=4, column=0, columnspan=2, pady=(15, 20), sticky=(tk.W, tk.E))
 
         ttk.Radiobutton(
             autonomous_frame,
@@ -143,7 +214,7 @@ class ExplorationLauncherGUI:
 
         # Button frame
         button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=4, column=0, columnspan=2, pady=(10, 0))
+        button_frame.grid(row=5, column=0, columnspan=2, pady=(10, 0))
 
         # Launch button
         launch_btn = ttk.Button(
@@ -170,10 +241,30 @@ class ExplorationLauncherGUI:
             font=("Arial", 9, "italic"),
             foreground="gray"
         )
-        self.status_label.grid(row=5, column=0, columnspan=2, pady=(20, 0))
+        self.status_label.grid(row=6, column=0, columnspan=2, pady=(20, 0))
 
     def launch_exploration(self):
         mode = self.mode_var.get()
+
+        # Get model parameters (same for both modes)
+        influence_radius = self.influence_radius_var.get().strip()
+        n_actions = self.n_actions_var.get().strip()
+        lookahead = self.lookahead_var.get().strip()
+
+        # Validate parameters
+        try:
+            float(influence_radius)
+            int(n_actions)
+            int(lookahead)
+        except ValueError:
+            messagebox.showerror(
+                "Invalid Parameters",
+                "Please enter valid numeric values for model parameters:\n"
+                "- Influence Radius: decimal number (e.g., 1.6)\n"
+                "- Number of Actions: integer (e.g., 17)\n"
+                "- Lookahead Node Creation: integer (e.g., 8)"
+            )
+            return
 
         if mode == "controlled":
             script_name = "launch_model_as_action_robot.sh"
@@ -203,6 +294,10 @@ class ExplorationLauncherGUI:
         confirm_msg += f"This will execute:\n{script_name}\n"
         if test_id and mode == "controlled":
             confirm_msg += f"\nTest ID: {test_id}\n"
+        confirm_msg += f"\nModel Parameters:\n"
+        confirm_msg += f"  - Influence Radius: {influence_radius}\n"
+        confirm_msg += f"  - Number of Actions: {n_actions}\n"
+        confirm_msg += f"  - Lookahead Node Creation: {lookahead}\n"
         confirm_msg += f"\nMultiple terminal windows will open."
 
         # Confirm launch
@@ -223,11 +318,14 @@ class ExplorationLauncherGUI:
             os.chmod(script_path, 0o755)
 
             # Launch the script from ROS workspace directory
-            if mode == "controlled" and test_id:
-                # Pass test_id as argument for controlled mode
-                subprocess.Popen(['bash', script_path, test_id], cwd=self.ros_ws_dir)
+            if mode == "controlled":
+                # Pass test_id and model parameters for controlled mode
+                subprocess.Popen(['bash', script_path, test_id, influence_radius, n_actions, lookahead],
+                               cwd=self.ros_ws_dir)
             else:
-                subprocess.Popen(['bash', script_path], cwd=self.ros_ws_dir)
+                # Pass model parameters for autonomous mode
+                subprocess.Popen(['bash', script_path, influence_radius, n_actions, lookahead],
+                               cwd=self.ros_ws_dir)
 
             # Update status
             self.status_label.config(

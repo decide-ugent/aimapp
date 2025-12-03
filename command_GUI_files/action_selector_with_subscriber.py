@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Int32
+from std_msgs.msg import Int32, Float32
 from std_msgs.msg import Int32MultiArray, Float64MultiArray
 from geometry_msgs.msg import Point, PoseStamped
 from aimapp_actions.action import AIFProcess
