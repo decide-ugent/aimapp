@@ -58,20 +58,41 @@ else
 fi
 
 # Terminal 1: SLAM Launch
-if [ -n "$MAP_FILE" ]; then
-    echo "Starting SLAM in localization mode with map: $MAP_FILE"
-    gnome-terminal --tab --title="SLAM-Localization" -- bash -c "
-    echo 'Starting SLAM launch in LOCALIZATION mode...'
-    echo 'Using map from: $MAP_FILE'
-    ros2 launch aimapp slam_launch.py map_file:=$MAP_FILE 2>&1 | tee $LOG_DIR/slam_launch.log
-    exec bash"
+# Determine if we should load an existing SLAM map
+SLAM_MAP_ARG=""
+if [ "$TEST_ID" != "None" ]; then
+    echo "Checking for saved SLAM map from test $TEST_ID..."
+    # Check if SLAM map exists on robot (note: SLAM toolbox saves with .posegraph extension)
+    SLAM_MAP_EXISTS=$(ssh $ROBOT_SSH "test -f $ROBOT_ROS_DIR/tests/$TEST_ID/slam_map.posegraph && echo 'yes' || echo 'no'")
+
+    if [ "$SLAM_MAP_EXISTS" = "yes" ]; then
+        # Get absolute path to SLAM map on robot (without extension, SLAM toolbox will add it)
+        SLAM_MAP_PATH=$(ssh $ROBOT_SSH "cd ~ && realpath $ROBOT_ROS_DIR/tests/$TEST_ID/slam_map 2>/dev/null || echo ''")
+        # Remove the extension if it's there
+        SLAM_MAP_PATH="${SLAM_MAP_PATH%.posegraph}"
+
+        if [ -n "$SLAM_MAP_PATH" ]; then
+            SLAM_MAP_ARG="map_file:=$SLAM_MAP_PATH"
+            echo "SLAM will load and continue from saved map: $SLAM_MAP_PATH"
+        else
+            echo "Could not get SLAM map path, starting fresh mapping"
+        fi
 else
-    echo "Starting SLAM in mapping mode (no existing map)"
-    gnome-terminal --tab --title="SLAM-Mapping" -- bash -c "
-    echo 'Starting SLAM launch in MAPPING mode...'
-    ros2 launch aimapp slam_launch.py 2>&1 | tee $LOG_DIR/slam_launch.log
-    exec bash"
+        echo "No saved SLAM map found, starting fresh mapping"
+    fi
 fi
+
+    gnome-terminal --tab --title="SLAM-Mapping" -- bash -c "
+echo 'Starting SLAM launch...'
+if [ \"$TEST_ID\" != \"None\" ] && [ -n \"$SLAM_MAP_ARG\" ]; then
+    echo 'Loading saved SLAM map from test $TEST_ID'
+    echo 'SLAM will continue building upon the existing map'
+    ros2 launch aimapp slam_launch.py $SLAM_MAP_ARG use_sim_time:=false 2>&1 | tee $LOG_DIR/slam_launch.log
+else
+    echo 'Starting fresh SLAM mapping'
+    ros2 launch aimapp slam_launch.py use_sim_time:=false 2>&1 | tee $LOG_DIR/slam_launch.log
+fi
+    exec bash"
 
 sleep 2
 

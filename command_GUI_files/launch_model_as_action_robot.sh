@@ -195,13 +195,32 @@ bash
 
 sleep 2
 
+# Determine which map to use for Nav2
+MAP_ARG=""
+if [ "$TEST_ID" != "None" ]; then
+    # Get absolute path to map on robot
+    MAP_PATH=$(ssh $ROBOT_SSH "cd ~ && realpath $ROBOT_ROS_DIR/tests/$TEST_ID/map.yaml 2>/dev/null || echo ''")
+
+    if [ -n "$MAP_PATH" ]; then
+        MAP_ARG="map:=$MAP_PATH"
+        echo "Nav2 will use saved map from test $TEST_ID at: $MAP_PATH"
+    else
+        echo "No saved map found for test $TEST_ID, using default map"
+    fi
+fi
+
 # Terminal 4: Nav2 husarion launch
 gnome-terminal --tab --title="Nav2" -- bash -c "
 ssh -t -X $ROBOT_SSH '
 cd $ROBOT_ROS_DIR
 source install/setup.bash
 echo \"Starting Nav2 husarion...\"
+if [ -n \"$MAP_ARG\" ]; then
+    echo \"Using map: $MAP_ARG\"
+    ros2 launch aimapp nav2_husarion_launch.py $MAP_ARG 2>&1 &
+else
 ros2 launch aimapp nav2_husarion_launch.py 2>&1 &
+fi
 NAV2_PID=\$!
 echo \"Nav2 launched with PID \$NAV2_PID\"
 echo \"\"

@@ -12,6 +12,7 @@ from geometry_msgs.msg import Point, PoseStamped
 from nav_msgs.msg import Odometry, OccupancyGrid
 # from sensor_msgs.msg import LaserScan
 from cv_bridge import CvBridge
+from slam_toolbox.srv import SerializePoseGraph
 
 from aimapp.visualisation_tools import pickle_load_model, create_save_data_dir, pickle_dump_model, save_step_data,save_failed_step_data, remove_white_border
 from aimapp_actions.action import AIFProcess  # Custom action
@@ -32,7 +33,7 @@ class AIFProcessServer(Node):
         self.robot_pose = []
         self.latest_map = None  # Store the latest map from /map topic
 
-        self.influence_radius = 2
+        self.influence_radius = 1.6
         self.robot_dim = 0.25
         self.model_imagine_next_action = True
 
@@ -57,6 +58,12 @@ class AIFProcessServer(Node):
             '/map',
             self.map_callback,
             qos_policy
+        )
+
+        # Create client for SLAM toolbox's serialize service
+        self.slam_serialize_client = self.create_client(
+            SerializePoseGraph,
+            '/slam_toolbox/serialize_map'
         )
 
         self.goal_pub = self.create_publisher(
@@ -536,6 +543,32 @@ class AIFProcessServer(Node):
         ''' create map, transform to cv2, transform to ros msg, publish'''
         pickle_dump_model(self.model, path)
 
+    def save_slam_map(self, store_path: Path):
+        """
+        Save SLAM map in serialized format using SLAM toolbox service.
+        This allows SLAM to reload and continue from the saved map.
+        """
+        if not self.slam_serialize_client.service_is_ready():
+            self.get_logger().warn('SLAM toolbox serialize service not available, skipping SLAM map save')
+            return
+
+        # Path for SLAM serialized map (without extension, SLAM toolbox adds it)
+        map_filename = str(store_path / 'slam_map')
+
+        request = SerializePoseGraph.Request()
+        request.filename = map_filename
+
+        self.get_logger().info(f'Saving SLAM map to: {map_filename}')
+
+        # Call service asynchronously but wait for completion
+        future = self.slam_serialize_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=10.0)
+
+        if future.result() is not None:
+            self.get_logger().info('SLAM map saved successfully')
+        else:
+            self.get_logger().error('Failed to save SLAM map')
+
     def save_data_process(self, ob_id:int, ob_match_score:list,\
                       obstacle_dist_per_actions:list,elapsed_time:float, data:dict=None):
 
@@ -546,6 +579,10 @@ class AIFProcessServer(Node):
             robot_pose = self.model.current_pose
 
         self.save_model(self.test_folder)
+
+        # Save SLAM map in serialized format for reloading
+        self.save_slam_map(self.test_folder)
+
         save_step_data(self.model, ob_id, ob, ob_match_score, obstacle_dist_per_actions,\
                     robot_pose, action_success=True, elapsed_time=elapsed_time,\
                         store_path=self.test_folder, action_select_data=data, execution_time=self.execution_time,\
