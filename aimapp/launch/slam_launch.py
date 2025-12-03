@@ -11,6 +11,7 @@ def generate_launch_description():
     aimapp_dir = get_package_share_directory('aimapp')
     slam_params_file = LaunchConfiguration('slam_params_file')
     map_file = LaunchConfiguration('map_file')
+    map_start_pose = LaunchConfiguration('map_start_pose')
 
     declare_use_sim_time_argument = DeclareLaunchArgument(
         'use_sim_time',
@@ -28,6 +29,11 @@ def generate_launch_description():
         default_value='',
         description='Full path to existing map file (.yaml) for localization mode. If empty, starts in mapping mode.')
 
+    declare_map_start_pose_cmd = DeclareLaunchArgument(
+        'map_start_pose',
+        default_value='[0.0, 0.0, 0.0]',
+        description='Initial pose [x, y, theta] for continuing from a saved map')
+
     # Déclare le node slam_toolbox
     start_async_slam_toolbox_node = LifecycleNode(
         parameters=[
@@ -35,6 +41,7 @@ def generate_launch_description():
             {
                 'use_sim_time': use_sim_time,
                 'map_file_name': map_file,  # Load existing map if provided
+                'map_start_pose': map_start_pose,  # Initial pose for continuing mapping
                 'map_start_at_dock': False
             }
         ],
@@ -49,6 +56,7 @@ def generate_launch_description():
     ld.add_action(declare_use_sim_time_argument)
     ld.add_action(declare_slam_params_file_cmd)
     ld.add_action(declare_map_file_cmd)
+    ld.add_action(declare_map_start_pose_cmd)
     ld.add_action(start_async_slam_toolbox_node)
 
     return ld

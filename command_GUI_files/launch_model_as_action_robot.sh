@@ -193,74 +193,128 @@ bash
 # # echo \"Shifting husarion odom with x=$NEG_ODOM_X, y=$NEG_ODOM_Y...\"
 # # echo \"Press Ctrl-C to stop this node\"
 
-sleep 2
 
-# Determine which SLAM map to load
+# Determine which Nav2 and SLAM maps to load
+MAP_FILE=""
 SLAM_MAP_ARG=""
+
 if [ "$TEST_ID" != "None" ]; then
-    echo "Checking for saved SLAM map from test $TEST_ID..."
+    echo "=========================================="
+    echo "Fetching maps from robot for test $TEST_ID..."
+    echo "=========================================="
+
+    # Create local directory for maps
+    LOCAL_MAP_DIR="$PWD/latest_slam_map/test_${TEST_ID}"
+    mkdir -p "$LOCAL_MAP_DIR"
+
+    REMOTE_MAP_DIR="$ROBOT_ROS_DIR/tests/$TEST_ID"
+
+    # ===== FETCH NAV2 MAP FILES (map.yaml and map.pgm) =====
+    echo ""
+    echo "--- Fetching Nav2 map files (.yaml and .pgm) ---"
+    scp "${ROBOT_SSH}:${REMOTE_MAP_DIR}/map.yaml" "$LOCAL_MAP_DIR/" 2>/dev/null
+    scp "${ROBOT_SSH}:${REMOTE_MAP_DIR}/map.pgm" "$LOCAL_MAP_DIR/" 2>/dev/null
+
+    if [ -f "$LOCAL_MAP_DIR/map.yaml" ] && [ -f "$LOCAL_MAP_DIR/map.pgm" ]; then
+        # Update the image path in map.yaml to point to local file
+        sed -i "s|image:.*|image: $LOCAL_MAP_DIR/map.pgm|g" "$LOCAL_MAP_DIR/map.yaml"
+        MAP_FILE="$LOCAL_MAP_DIR/map.yaml"
+        echo "SUCCESS: Nav2 map files downloaded to $LOCAL_MAP_DIR"
+        echo "  - map.yaml: $LOCAL_MAP_DIR/map.yaml"
+        echo "  - map.pgm: $LOCAL_MAP_DIR/map.pgm"
+    else
+        echo "WARNING: Could not find Nav2 map files (map.yaml/map.pgm) in robot:$REMOTE_MAP_DIR"
+        echo "Nav2 will start without a map"
+    fi
+
+    # ===== FETCH SLAM MAP FILES (slam_map.data and slam_map.posegraph) =====
+    echo ""
+    echo "--- Fetching SLAM map files (.data and .posegraph) ---"
+
     # Check if SLAM map exists on robot
-    SLAM_MAP_EXISTS=$(ssh $ROBOT_SSH "test -f $ROBOT_ROS_DIR/tests/$TEST_ID/slam_map.posegraph && echo 'yes' || echo 'no'")
+    SLAM_MAP_EXISTS=$(ssh $ROBOT_SSH "test -f $REMOTE_MAP_DIR/slam_map.posegraph && test -f $REMOTE_MAP_DIR/slam_map.data && echo 'yes' || echo 'no'")
 
     if [ "$SLAM_MAP_EXISTS" = "yes" ]; then
-        # Get absolute path to SLAM map on robot (without extension)
-        SLAM_MAP_PATH=$(ssh $ROBOT_SSH "cd ~ && realpath $ROBOT_ROS_DIR/tests/$TEST_ID/slam_map 2>/dev/null || echo ''")
-        # Remove extension if present
-        SLAM_MAP_PATH="${SLAM_MAP_PATH%.posegraph}"
+        # Copy SLAM map files from robot to local
+        scp "${ROBOT_SSH}:${REMOTE_MAP_DIR}/slam_map.data" "$LOCAL_MAP_DIR/" 2>/dev/null
+        scp "${ROBOT_SSH}:${REMOTE_MAP_DIR}/slam_map.posegraph" "$LOCAL_MAP_DIR/" 2>/dev/null
 
-        if [ -n "$SLAM_MAP_PATH" ]; then
-            SLAM_MAP_ARG="map_file:=$SLAM_MAP_PATH"
-            echo "SLAM will load and continue from saved map: $SLAM_MAP_PATH"
+        if [ -f "$LOCAL_MAP_DIR/slam_map.data" ] && [ -f "$LOCAL_MAP_DIR/slam_map.posegraph" ]; then
+            # Use local path (without extension, SLAM toolbox will add it)
+            SLAM_MAP_ARG="map_file:=$LOCAL_MAP_DIR/slam_map"
+            echo "SUCCESS: SLAM map files downloaded to $LOCAL_MAP_DIR"
+            echo "  - slam_map.data: $LOCAL_MAP_DIR/slam_map.data"
+            echo "  - slam_map.posegraph: $LOCAL_MAP_DIR/slam_map.posegraph"
+            echo "SLAM will load and continue from local saved map: $LOCAL_MAP_DIR/slam_map"
+        else
+            echo "WARNING: Failed to download SLAM map files, starting fresh mapping"
         fi
     else
-        echo "No saved SLAM map found, starting fresh mapping"
+        echo "No saved SLAM map found on robot, starting fresh SLAM mapping"
     fi
+
+    echo "=========================================="
+    echo ""
+else
+    echo "No test_id provided, starting with fresh maps"
 fi
 
 # Wait for rosbot to fully initialize before starting SLAM
 echo "Waiting for rosbot initialization to complete..."
 sleep 10
 
-# Terminal: SLAM on robot
-gnome-terminal --tab --title="SLAM-Robot" -- bash -c "
-ssh -t -X $ROBOT_SSH '
-cd $ROBOT_ROS_DIR
-source install/setup.bash
-echo \"Starting SLAM on robot...\"
-if [ -n \"$SLAM_MAP_ARG\" ]; then
-    echo \"Loading saved SLAM map from test $TEST_ID\"
-    ros2 launch aimapp slam_launch.py $SLAM_MAP_ARG use_sim_time:=false 2>&1
+# Terminal: SLAM on laptop
+# Note: Variables must be properly expanded before being passed to bash -c
+if [ -n "$SLAM_MAP_ARG" ]; then
+    echo "Launching SLAM with saved map: $SLAM_MAP_ARG"
+    echo "SLAM will start at position: x=$ODOM_X, y=$ODOM_Y"
+    gnome-terminal --tab --title="SLAM-Laptop" -- bash -c "
+    source install/setup.bash
+    echo 'Starting SLAM on laptop...'
+    echo 'Loading saved SLAM map from test $TEST_ID'
+    echo 'SLAM map path: $SLAM_MAP_ARG'
+    echo 'SLAM initial pose: x=$ODOM_X, y=$ODOM_Y'
+    ros2 launch aimapp slam_launch.py $SLAM_MAP_ARG use_sim_time:=false map_start_pose:=[$ODOM_X,$ODOM_Y,0.0] 2>&1
+    bash
+    "
 else
-    echo \"Starting fresh SLAM mapping\"
+    echo "Launching SLAM with fresh mapping"
+    gnome-terminal --tab --title="SLAM-Laptop" -- bash -c "
+    source install/setup.bash
+    echo 'Starting SLAM on laptop...'
+    echo 'Starting fresh SLAM mapping'
     ros2 launch aimapp slam_launch.py use_sim_time:=false 2>&1
+    bash
+    "
 fi
-bash
-'"
-
-sleep 5
 
 # Determine which map to use for Nav2
 MAP_ARG=""
-if [ "$TEST_ID" != "None" ]; then
-    # Get absolute path to map on robot
-    MAP_PATH=$(ssh $ROBOT_SSH "cd ~ && realpath $ROBOT_ROS_DIR/tests/$TEST_ID/map.yaml 2>/dev/null || echo ''")
-
-    if [ -n "$MAP_PATH" ]; then
-        MAP_ARG="map:=$MAP_PATH"
-        echo "Nav2 will use saved map from test $TEST_ID at: $MAP_PATH"
-    else
-        echo "No saved map found for test $TEST_ID, using default map"
-    fi
+if [ -n "$MAP_FILE" ]; then
+    MAP_ARG="map:=$MAP_FILE"
+    echo "Nav2 will use local saved map from test $TEST_ID at: $MAP_FILE"
+else
+    echo "No saved map available, Nav2 will start without a map"
 fi
+
+sleep 5
+
+gnome-terminal --tab --title="SLAM-MAP-SAVER" -- bash -c "
+source install/setup.bash
+echo \"Starting SLAM MAP saver...\"
+echo \"This will save SLAM map when /shifted_odom is received\"
+ros2 run aimapp save_slam_map.py 2>&1
+bash
+"
+
 
 # Wait for SLAM to initialize before starting Nav2
 echo "Waiting for SLAM to initialize..."
-sleep 5
-
-# Terminal 4: Nav2 husarion launch
+sleep 3
+#ssh -t -X $ROBOT_SSH '
+#cd $ROBOT_ROS_DIR
+# Terminal 4: Nav2 husarion launch (LAPTOP)
 gnome-terminal --tab --title="Nav2" -- bash -c "
-ssh -t -X $ROBOT_SSH '
-cd $ROBOT_ROS_DIR
 source install/setup.bash
 echo \"Starting Nav2 husarion...\"
 if [ -n \"$MAP_ARG\" ]; then
@@ -303,9 +357,6 @@ echo \"Press Ctrl-C to stop this node\"
 wait \$NAV2_PID
 bash
 '"
-
-
-
 
 # ros2 topic pub --once /initialpose geometry_msgs/msg/PoseWithCovarianceStamped "{
 #   header: {
@@ -368,11 +419,11 @@ exec bash
 
 sleep 2
 
+#ssh -t -X $ROBOT_SSH '
+# cd $ROBOT_ROS_DIR
 
-# # Terminal 7: Nav2 Client continuous mode
+# # Terminal 7: Nav2 Client continuous mode (LAPTOP)
 gnome-terminal --tab --title="Nav2-Client" -- bash -c "
-ssh -t -X $ROBOT_SSH '
-cd $ROBOT_ROS_DIR
 source install/setup.bash
 echo \"Starting nav2_client in continuous mode...\"
 echo \"Press Ctrl-C to stop this node\"

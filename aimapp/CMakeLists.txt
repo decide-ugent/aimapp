@@ -55,6 +55,7 @@ install(PROGRAMS
 
   simulation_tools/remove_turtlebot3_from_gazebo.py
   simulation_tools/reset_turtlebot3_odom.py
+  simulation_tools/save_slam_map.py
   simulation_tools/simulation_overview_data_save.py
   simulation_tools/shift_husarion_odom.py
   simulation_tools/node_visualizer.py
