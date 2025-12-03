@@ -43,78 +43,224 @@ fi
 
 echo "SSH connection verified. Launching terminals..."
 
-# Terminal 1: Joy2Twist gamepad controller
+# Extract initial pose from model if TEST_ID is provided
+ODOM_X="0.0"
+ODOM_Y="0.0"
+
+if [ "$TEST_ID" != "None" ]; then
+    echo "Extracting initial pose from test $TEST_ID..."
+    echo "Connecting to robot and searching for model file..."
+
+    # Create a Python script to extract current_pose from model.pkl
+    POSE_OUTPUT=$(ssh $ROBOT_SSH "cd $ROBOT_ROS_DIR && source install/setup.bash && python3 -c \"
+import pickle
+import os
+import sys
+
+test_id = '$TEST_ID'
+test_dir = os.path.join('tests', test_id)
+
+# Print debug info to stderr so it doesn't interfere with coordinate output
+print(f'DEBUG: Current directory: {os.getcwd()}', file=sys.stderr)
+print(f'DEBUG: Looking for test directory: {test_dir}', file=sys.stderr)
+
+if not os.path.exists(test_dir):
+    print(f'ERROR: Test directory not found: {test_dir}', file=sys.stderr)
+    sys.exit(1)
+
+model_path = os.path.join(test_dir, 'model.pkl')
+print(f'DEBUG: Looking for model at: {model_path}', file=sys.stderr)
+
+if not os.path.exists(model_path):
+    print(f'ERROR: model.pkl not found in {test_dir}', file=sys.stderr)
+    sys.exit(1)
+
+try:
+    print('DEBUG: Loading model.pkl...', file=sys.stderr)
+    with open(model_path, 'rb') as f:
+        model = pickle.load(f)
+
+    print('DEBUG: Model loaded successfully', file=sys.stderr)
+
+    if hasattr(model, 'current_pose'):
+        pose = model.current_pose
+        print(f'DEBUG: Found current_pose: {pose}', file=sys.stderr)
+        # Output only the coordinates to stdout (this gets captured)
+        print(f'{pose[0]} {pose[1]}')
+    else:
+        print('ERROR: model.current_pose attribute not found', file=sys.stderr)
+        sys.exit(1)
+except Exception as e:
+    print(f'ERROR: Failed to load model: {e}', file=sys.stderr)
+    sys.exit(1)
+\" 2>&1")
+
+    # Capture the exit code
+    EXIT_CODE=$?
+
+    # Display all output (includes both stdout and stderr due to 2>&1)
+    echo "$POSE_OUTPUT"
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        # Parse the output - get the last line which should be the coordinates
+        COORDS=$(echo "$POSE_OUTPUT" | tail -n 1)
+        ODOM_X=$(echo $COORDS | awk '{print $1}')
+        ODOM_Y=$(echo $COORDS | awk '{print $2}')
+
+        # Check if we got valid numbers
+        if [[ "$ODOM_X" =~ ^-?[0-9]+\.?[0-9]*$ ]] && [[ "$ODOM_Y" =~ ^-?[0-9]+\.?[0-9]*$ ]]; then
+            echo "SUCCESS!: Extracted pose from model: x=$ODOM_X, y=$ODOM_Y"
+        else
+            echo "WARNING: Could not parse coordinates, using default (0.0, 0.0)"
+            ODOM_X="0.0"
+            ODOM_Y="0.0"
+        fi
+    else
+        echo "WARNING: Could not extract pose from model, using default (0.0, 0.0)"
+        ODOM_X="0.0"
+        ODOM_Y="0.0"
+    fi
+fi
+
+echo "Using odometry shift: x=-$ODOM_X, y=-$ODOM_Y"
+
+# Calculate negated values for odometry shift
+NEG_ODOM_X=$(python3 -c "print(-float('$ODOM_X'))")
+NEG_ODOM_Y=$(python3 -c "print(-float('$ODOM_Y'))")
+
+
+
+
+
+# # # Terminal 1: Joy2Twist gamepad controller
 gnome-terminal --tab --title="Joy2Twist" -- bash -c "
-ssh -X $ROBOT_SSH 'bash -l -c \"
+ssh -t -X $ROBOT_SSH '
 cd $ROBOT_ROS_DIR
 source install/setup.bash
-echo Starting Joy2Twist gamepad controller...;
-ros2 launch joy2twist gamepad_controller.launch.py joy2twist_params_file:=/home/husarion/joy2twist.yaml 2>&1; 
-exec bash
-\"'"
+echo \"Starting Joy2Twist gamepad controller...\"
+echo \"Press Ctrl-C to stop this node\"
+ros2 launch joy2twist gamepad_controller.launch.py joy2twist_params_file:=/home/husarion/joy2twist.yaml 2>&1
+bash
+'"
 
 
 sleep 2
 
 # Terminal 3: Start rosbot and shift odom
 gnome-terminal --tab --title="Rosbot-Odom" -- bash -c "
-ssh -t -X $ROBOT_SSH 'bash -l -c \"
-echo Starting rosbot...;
-bash start_rosbot.sh 2>&1;
-echo To attach: tmux attach -t rosbot_startup;
-echo To switch windows: Press Ctrl-b, then n or p;
-echo To detach: Press Ctrl-b, then d;
-echo To kill the session: tmux kill-session -t rosbot_startup;
-cd $ROBOT_ROS_DIR;
-source install/setup.bash;
-echo Shifting husarion odom...;
-echo Press Ctrl-C to stop this node;
-ros2 run aimapp shift_husarion_odom.py 0.0 0.0 2>&1;
-exec bash
-\"'"
+ssh -t -X $ROBOT_SSH '
+source $ROBOT_ROS_DIR/install/setup.bash
+echo \"Starting rosbot!\"
+bash start_rosbot.sh 2>&1
+echo \"To attach: tmux attach -t rosbot_startup\"
+echo \"To switch windows: Press Ctrl-b, then n or p\"
+echo \"To detach: Press Ctrl-b, then d\"
+echo \"To kill the session: tmux kill-session -t rosbot_startup\"
+echo \"\"
+echo \"Press Ctrl-C to stop this node\"
+cd $ROBOT_ROS_DIR
+ros2 run aimapp shift_husarion_odom.py $NEG_ODOM_X $NEG_ODOM_Y 2>&1  
+bash
+'"
+
+# # This shift is useful when we do not restart the robot but just the model (thus initial position is not 0.0 0.0)
+
+
+# # echo \"\"
+# # echo \"Waiting for EKF node to be ready...\"
+# # sleep 3
+# # echo \"Setting initial EKF pose to x=$ODOM_X, y=$ODOM_Y using set_pose service...\"
+# # ros2 topic pub --once /set_pose geometry_msgs/msg/PoseWithCovarianceStamped \"{
+# #   header: {
+# #     stamp: {sec: 0, nanosec: 0},
+# #     frame_id: 'odom'
+# #   },
+# #   pose: {
+# #     pose: {
+# #       position: {x: $ODOM_X, y: $ODOM_Y, z: 0.0},
+# #       orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+# #     },
+# #     covariance: [0.1, 0.0, 0.0, 0.0, 0.0, 0.0,
+# #                  0.0, 0.1, 0.0, 0.0, 0.0, 0.0,
+# #                  0.0, 0.0, 0.1, 0.0, 0.0, 0.0,
+# #                  0.0, 0.0, 0.0, 0.1, 0.0, 0.0,
+# #                  0.0, 0.0, 0.0, 0.0, 0.1, 0.0,
+# #                  0.0, 0.0, 0.0, 0.0, 0.0, 0.1]
+# #   }
+# # }\"
+# # echo \"EKF initial pose set successfully!\"
+# # echo \"\"
+# # echo \"Shifting husarion odom with x=$NEG_ODOM_X, y=$NEG_ODOM_Y...\"
+# # echo \"Press Ctrl-C to stop this node\"
 
 sleep 2
 
 # Terminal 4: Nav2 husarion launch
 gnome-terminal --tab --title="Nav2" -- bash -c "
-ssh -t -X $ROBOT_SSH 'bash -l -c \"
-cd $ROBOT_ROS_DIR;
-source install/setup.bash;
-echo Starting Nav2 husarion...;
-echo Press Ctrl-C to stop this node;
-ros2 launch aimapp nav2_husarion_launch.py 2>&1;
-exec bash
-\"'"
+ssh -t -X $ROBOT_SSH '
+cd $ROBOT_ROS_DIR
+source install/setup.bash
+echo \"Starting Nav2 husarion...\"
+ros2 launch aimapp nav2_husarion_launch.py 2>&1 &
+NAV2_PID=\$!
+echo \"Nav2 launched with PID \$NAV2_PID\"
+echo \"\"
+echo \"Waiting for AMCL to be ready...\"
+sleep 5
+echo \"Setting AMCL initial pose to x=$ODOM_X, y=$ODOM_Y...\"
+ros2 topic pub --once /initialpose geometry_msgs/msg/PoseWithCovarianceStamped \"{
+  header: {
+    stamp: {sec: 0, nanosec: 0},
+    frame_id: 'map'
+  },
+  pose: {
+    pose: {
+      position: {x: $ODOM_X, y: $ODOM_Y, z: 0.0},
+      orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+    },
+    covariance: [0.5, 0.0, 0.0, 0.0, 0.0, 0.0,
+                 0.0, 0.5, 0.0, 0.0, 0.0, 0.0,
+                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                 0.0, 0.0, 0.0, 0.0, 0.0, 0.06853]
+  }
+}\"
+echo \"AMCL initial pose set successfully!\"
+echo \"Press Ctrl-C to stop this node\"
+wait \$NAV2_PID
+bash
+'"
 
 sleep 2
 
-# Terminal 5: Minimal agent launch
+# # Terminal 5: Minimal agent launch
 gnome-terminal --tab --title="Agent" -- bash -c "
-ssh -t -X $ROBOT_SSH 'bash -l -c \"
-cd $ROBOT_ROS_DIR;
-source install/setup.bash;
-echo Starting minimal agent with test_id=$TEST_ID...;
-echo Press Ctrl-C to stop this node;
-ros2 launch aimapp minimal_agent_launch.py test_id:=$TEST_ID 2>&1;
-exec bash
-\"'"
+ssh -t -X $ROBOT_SSH '
+cd $ROBOT_ROS_DIR
+source install/setup.bash
+echo \"Starting minimal agent with test_id=$TEST_ID...\"
+echo \"Press Ctrl-C to stop this node\"
+ros2 launch aimapp minimal_agent_launch.py test_id:=$TEST_ID 2>&1
+bash
+'"
 
 sleep 2
 
-# Terminal 2: Node visualizer
+# # Terminal 2: Node visualizer
 gnome-terminal --tab --title="Visualizer" -- bash -c "
-ssh -t -X $ROBOT_SSH 'bash -l -c \"
-cd $ROBOT_ROS_DIR;
-source install/setup.bash;
-echo Starting node visualizer...;
-echo Press Ctrl-C to stop this node;
-ros2 run aimapp node_visualizer.py 2>&1;
-exec bash
-\"'"
+ssh -t -X $ROBOT_SSH '
+cd $ROBOT_ROS_DIR
+source install/setup.bash
+echo \"Starting node visualizer...\"
+echo \"Press Ctrl-C to stop this node\"
+ros2 run aimapp node_visualizer.py 2>&1
+bash
+'"
 
 sleep 2
 
-# Terminal 6: Save data
+# # Terminal 6: Save data
 gnome-terminal --tab --title="SaveData" -- bash -c "
 ssh -t -X $ROBOT_SSH 'bash -l -c \"
 cd $ROBOT_ROS_DIR;
@@ -129,16 +275,16 @@ exec bash
 sleep 2
 
 
-# Terminal 7: Nav2 Client continuous mode
+# # Terminal 7: Nav2 Client continuous mode
 gnome-terminal --tab --title="Nav2-Client" -- bash -c "
-ssh -t -X $ROBOT_SSH 'bash -l -c \"
-cd $ROBOT_ROS_DIR;
-source install/setup.bash;
-echo Starting nav2_client in continuous mode...;
-echo Press Ctrl-C to stop this node;
-ros2 run aimapp nav2_client.py --continuous 2>&1;
-exec bash
-\"'"
+ssh -t -X $ROBOT_SSH '
+cd $ROBOT_ROS_DIR
+source install/setup.bash
+echo \"Starting nav2_client in continuous mode...\"
+echo \"Press Ctrl-C to stop this node\"
+ros2 run aimapp nav2_client.py --continuous 2>&1
+bash
+'"
 
 # Terminal 7: AIF Process action (with placeholders to fill)
 # gnome-terminal --tab --title="AIF-Action" -- bash -c "
@@ -159,18 +305,6 @@ exec bash
 # \"'
 # exec bash"
 
-sleep 2
-
-# Terminal 8: Action Selector GUI - runs locally, not on robot
-gnome-terminal --tab --title="Action-Selector-GUI" -- bash -c "
-echo 'Starting Action Selector GUI (local)...'
-echo 'This GUI will display possible actions from AIF Process'
-echo 'and allow you to select which pose to navigate to next.'
-echo ''
-echo 'Make sure ROS_DOMAIN_ID matches the robot!'
-echo ''
-python3 src/aimapp/command_GUI_files/action_selector_with_subscriber.py 2>&1
-exec bash"
 
 # sleep 2
 
@@ -193,6 +327,19 @@ exec bash"
 # echo
 # \"'
 # exec bash"
+
+sleep 2
+
+# Terminal 8: Action Selector GUI - runs locally, not on robot
+gnome-terminal --tab --title="Action-Selector-GUI" -- bash -c "
+echo 'Starting Action Selector GUI (local)...'
+echo 'This GUI will display possible actions from AIF Process'
+echo 'and allow you to select which pose to navigate to next.'
+echo ''
+echo 'Make sure ROS_DOMAIN_ID matches the robot!'
+echo ''
+python3 src/aimapp/command_GUI_files/action_selector_with_subscriber.py 2>&1
+exec bash"
 
 echo "All terminals launched. Check logs in: $LOG_DIR"
 echo "Note: GUI runs locally, all other nodes run on robot at $ROBOT_SSH"
