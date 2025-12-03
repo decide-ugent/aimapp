@@ -195,6 +195,50 @@ bash
 
 sleep 2
 
+# Determine which SLAM map to load
+SLAM_MAP_ARG=""
+if [ "$TEST_ID" != "None" ]; then
+    echo "Checking for saved SLAM map from test $TEST_ID..."
+    # Check if SLAM map exists on robot
+    SLAM_MAP_EXISTS=$(ssh $ROBOT_SSH "test -f $ROBOT_ROS_DIR/tests/$TEST_ID/slam_map.posegraph && echo 'yes' || echo 'no'")
+
+    if [ "$SLAM_MAP_EXISTS" = "yes" ]; then
+        # Get absolute path to SLAM map on robot (without extension)
+        SLAM_MAP_PATH=$(ssh $ROBOT_SSH "cd ~ && realpath $ROBOT_ROS_DIR/tests/$TEST_ID/slam_map 2>/dev/null || echo ''")
+        # Remove extension if present
+        SLAM_MAP_PATH="${SLAM_MAP_PATH%.posegraph}"
+
+        if [ -n "$SLAM_MAP_PATH" ]; then
+            SLAM_MAP_ARG="map_file:=$SLAM_MAP_PATH"
+            echo "SLAM will load and continue from saved map: $SLAM_MAP_PATH"
+        fi
+    else
+        echo "No saved SLAM map found, starting fresh mapping"
+    fi
+fi
+
+# Wait for rosbot to fully initialize before starting SLAM
+echo "Waiting for rosbot initialization to complete..."
+sleep 10
+
+# Terminal: SLAM on robot
+gnome-terminal --tab --title="SLAM-Robot" -- bash -c "
+ssh -t -X $ROBOT_SSH '
+cd $ROBOT_ROS_DIR
+source install/setup.bash
+echo \"Starting SLAM on robot...\"
+if [ -n \"$SLAM_MAP_ARG\" ]; then
+    echo \"Loading saved SLAM map from test $TEST_ID\"
+    ros2 launch aimapp slam_launch.py $SLAM_MAP_ARG use_sim_time:=false 2>&1
+else
+    echo \"Starting fresh SLAM mapping\"
+    ros2 launch aimapp slam_launch.py use_sim_time:=false 2>&1
+fi
+bash
+'"
+
+sleep 5
+
 # Determine which map to use for Nav2
 MAP_ARG=""
 if [ "$TEST_ID" != "None" ]; then
@@ -209,6 +253,10 @@ if [ "$TEST_ID" != "None" ]; then
     fi
 fi
 
+# Wait for SLAM to initialize before starting Nav2
+echo "Waiting for SLAM to initialize..."
+sleep 5
+
 # Terminal 4: Nav2 husarion launch
 gnome-terminal --tab --title="Nav2" -- bash -c "
 ssh -t -X $ROBOT_SSH '
@@ -219,38 +267,65 @@ if [ -n \"$MAP_ARG\" ]; then
     echo \"Using map: $MAP_ARG\"
     ros2 launch aimapp nav2_husarion_launch.py $MAP_ARG 2>&1 &
 else
-ros2 launch aimapp nav2_husarion_launch.py 2>&1 &
+    ros2 launch aimapp nav2_husarion_launch.py 2>&1 &
 fi
 NAV2_PID=\$!
 echo \"Nav2 launched with PID \$NAV2_PID\"
 echo \"\"
 echo \"Waiting for AMCL to be ready...\"
-sleep 5
+sleep 10
 echo \"Setting AMCL initial pose to x=$ODOM_X, y=$ODOM_Y...\"
-ros2 topic pub --once /initialpose geometry_msgs/msg/PoseWithCovarianceStamped \"{
-  header: {
-    stamp: {sec: 0, nanosec: 0},
-    frame_id: 'map'
-  },
-  pose: {
-    pose: {
-      position: {x: $ODOM_X, y: $ODOM_Y, z: 0.0},
-      orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
-    },
-    covariance: [0.5, 0.0, 0.0, 0.0, 0.0, 0.0,
-                 0.0, 0.5, 0.0, 0.0, 0.0, 0.0,
-                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                 0.0, 0.0, 0.0, 0.0, 0.0, 0.06853]
-  }
-}\"
+# Publish initial pose multiple times with current timestamp
+for i in {1..5}; do
+    ros2 topic pub --once /initialpose geometry_msgs/msg/PoseWithCovarianceStamped \"{
+      header: {
+        stamp: {sec: 0, nanosec: 0},
+        frame_id: 'map'
+      },
+      pose: {
+        pose: {
+          position: {x: $ODOM_X, y: $ODOM_Y, z: 0.0},
+          orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+        },
+        covariance: [0.25, 0.0, 0.0, 0.0, 0.0, 0.0,
+                     0.0, 0.25, 0.0, 0.0, 0.0, 0.0,
+                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                     0.0, 0.0, 0.0, 0.0, 0.0, 0.06853]
+      }
+    }\" &
+    sleep 0.5
+done
+wait
 echo \"AMCL initial pose set successfully!\"
 echo \"Press Ctrl-C to stop this node\"
 wait \$NAV2_PID
 bash
 '"
 
+
+
+
+# ros2 topic pub --once /initialpose geometry_msgs/msg/PoseWithCovarianceStamped "{
+#   header: {
+#     stamp: {sec: 0, nanosec: 0},
+#     frame_id: 'map'
+#   },
+#   pose: {
+#     pose: {
+#       position: {x: $ODOM_X, y: $ODOM_Y, z: 0.0},
+#       orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+#     },
+#     covariance: [0.5, 0.0, 0.0, 0.0, 0.0, 0.0,
+#                  0.0, 0.5, 0.0, 0.0, 0.0, 0.0,
+#                  0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+#                  0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+#                  0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+#                  0.0, 0.0, 0.0, 0.0, 0.0, 0.06853]
+#   }}"
+
+  
 sleep 2
 
 # # Terminal 5: Minimal agent launch
