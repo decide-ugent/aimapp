@@ -333,8 +333,10 @@ class GoalReachingGUI:
             os.chmod(script_path, 0o755)
 
             # Launch the script from ROS workspace directory
-            # Pass: test_id goal_ob_id goal_pose_id start_node_id
-            subprocess.Popen(['bash', script_path, test_id, goal_ob_id, goal_pose_id, start_node_id],
+            # Pass: test_id goal_ob_id goal_pose_id start_node_id influence_radius n_actions lookahead_node_creation
+            # Using default values for model parameters (can be made configurable later)
+            subprocess.Popen(['bash', script_path, test_id, goal_ob_id, goal_pose_id, start_node_id,
+                            '1.6', '17', '8'],
                            cwd=self.ros_ws_dir)
 
             # Update status

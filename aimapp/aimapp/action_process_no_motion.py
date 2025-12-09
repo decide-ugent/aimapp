@@ -19,6 +19,7 @@ from aimapp_actions.msg import NavigationResult
 from aimapp.obs_transf.observation_match import ViewMemory
 from aimapp.obs_transf.get_360_camera_client import Panorama360CamClient
 from aimapp.model.V5 import Ours_V5_RW
+from aimapp.mcts_reward_visualiser import MCTSRewardVisualiser
 import time
 import numpy as np
 import cv2
@@ -98,19 +99,6 @@ class AIFProcessServer(Node):
             qos_policy
         )
 
-        # self.goal_sub = self.create_subscription(
-        #     Bool,
-        #     '/goal_reached',
-        #     self.goal_reached_callback,
-        #     10
-        # )
-
-        # self.odom_sub = self.create_subscription(
-        #     LaserScan,
-        #     '/agent/scan',
-        #     self.lidar_callback,
-        #     10
-        # )
         self.model_odom_pub = self.create_publisher(
             Odometry,
             '/shifted_odom',
@@ -144,6 +132,9 @@ class AIFProcessServer(Node):
         # Action client to trigger AIFProcess action
         self.aif_action_client = ActionClient(self, AIFProcess, 'aif_process')
 
+        # Initialize MCTS reward visualizer (will be set after model is initialized)
+        self.mcts_visualizer = None
+
         self.goal_path = ''
      
         if test_id == 'None':
@@ -153,12 +144,27 @@ class AIFProcessServer(Node):
             self.prev_scans_dist = obstacle_dist_per_actions
 
         else:
-            self.test_folder = get_data_dir(None, test_id)
-            self.load_latest_model()
-            folder = str(self.test_folder)[:-1]
-            #self.test_folder = Path(folder + str(int(test_id)+1))
-            # self.model.reset(start_pose=(0.0,0.0))
-            # self.model.PoseMemory.reset_odom([0.0,0.0])
+            # Load existing model from test_id
+            old_test_folder = get_data_dir(None, test_id)
+            self.get_logger().info(f'Loading model from {old_test_folder}')
+
+            # Check if we're in goal-reaching mode (at least one goal specified)
+            is_goal_reaching_mode = (goal_ob_id >= 0) or (goal_pose_id >= 0)
+
+            if is_goal_reaching_mode:
+                # Create a new test folder for goal-reaching
+                self.test_folder = create_save_data_dir()
+                self.get_logger().info(f'Goal-reaching mode: Created new test folder {self.test_folder}')
+
+                # Load model from old folder
+                self.get_logger().info(f'Loading model from previous test {old_test_folder}')
+                self.model = pickle_load_model(old_test_folder)
+                self.Views.set_memory_views(self.model.get_memory_views())
+            else:
+                # Exploration mode: continue in same folder
+                self.test_folder = old_test_folder
+                self.load_latest_model()
+                self.get_logger().info(f'Exploration mode: Continuing in test folder {self.test_folder}')
 
             # Reset model to start_node_id if provided
             if self.start_node_id >= 0:
@@ -186,9 +192,12 @@ class AIFProcessServer(Node):
             # self.last_ob_id = np.argmax(qo[0]) #might be imbricated list. to check
             self.last_ob_id = ob_id
             self.prev_scans_dist = obstacle_dist_per_actions
-            #self.save_new_model_next_step()
-            
+
         self.set_navigation_mode(self.goal_id)
+        self.is_goal_reaching_mode = (goal_ob_id >= 0) or (goal_pose_id >= 0)
+
+        # IF WE WANT TO VISUALISE MCTS RESULTS ON RVIZ
+        self.mcts_visualizer = MCTSRewardVisualiser(self, self.model, frame_id='map')
 
         next_possible_actions = self.model.define_next_possible_actions(obstacle_dist_per_actions, restrictive=True,logs=self.get_logger())
         ideal_next_action = [-1]
@@ -197,6 +206,11 @@ class AIFProcessServer(Node):
             ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[self.last_ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger(),  plot_MCTS_tree=True)
 
             self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
+
+            # Visualize MCTS rewards if we have the tree data
+            if data is not None and 'plot_MCTS_tree' in data and data['plot_MCTS_tree'] is not None:
+                self.mcts_visualizer.publish_mcts_rewards(data['plot_MCTS_tree'], top_k=5)
+                self.get_logger().info('Published MCTS reward visualization to RViz')
         
         self.save_data_process(ob_id, ob_match_score,\
                       obstacle_dist_per_actions, elapsed_time=0.0,  data=data)
@@ -221,6 +235,11 @@ class AIFProcessServer(Node):
 
         # Publish possible actions, nodes, and goals for GUI
         self.publish_possible_actions_nodes(next_possible_actions, next_possible_nodes, reachable_points)
+
+        # Save model at initialization if in goal-reaching mode (new test folder created)
+        if self.is_goal_reaching_mode and test_id != 'None':
+            self.save_model(self.test_folder)
+            self.get_logger().info(f'Goal-reaching mode: Initial model saved to {self.test_folder}')
 
         self.action_server = ActionServer(
             self,
@@ -481,6 +500,10 @@ class AIFProcessServer(Node):
                 self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
                 next_pose, next_pose_id = self.model.determine_next_pose(ideal_next_action[0])
                 self.pub_goal_pose(next_pose)
+
+                # Visualize MCTS rewards after failed action
+                if self.mcts_visualizer is not None and data is not None and 'plot_MCTS_tree' in data and data['plot_MCTS_tree'] is not None:
+                    self.mcts_visualizer.publish_mcts_rewards(data['plot_MCTS_tree'], top_k=5)
                 
             elapsed_time = time.time() - self.start_time
             self.save_model(self.test_folder)
@@ -519,6 +542,10 @@ class AIFProcessServer(Node):
 
             self.execution_time += time.time() - start_execution_time
             self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
+
+            # Visualize MCTS rewards after each action
+            if self.mcts_visualizer is not None and data is not None and 'plot_MCTS_tree' in data and data['plot_MCTS_tree'] is not None:
+                self.mcts_visualizer.publish_mcts_rewards(data['plot_MCTS_tree'], top_k=5)
         elapsed_time = time.time() - self.start_time
         self.save_data_process(ob_id, ob_match_score, obstacle_dist_per_actions=obstacle_dist_per_actions, elapsed_time=elapsed_time, data= data)
 
@@ -565,8 +592,6 @@ class AIFProcessServer(Node):
         ''' create map, transform to cv2, transform to ros msg, publish'''
         pickle_dump_model(self.model, path)
 
-    
-
     def save_data_process(self, ob_id:int, ob_match_score:list,\
                       obstacle_dist_per_actions:list,elapsed_time:float, data:dict=None):
 
@@ -575,10 +600,8 @@ class AIFProcessServer(Node):
             robot_pose = self.robot_pose
         else:
             robot_pose = self.model.current_pose
-
+    
         self.save_model(self.test_folder)
-
-        
         save_step_data(self.model, ob_id, ob, ob_match_score, obstacle_dist_per_actions,\
                     robot_pose, action_success=True, elapsed_time=elapsed_time,\
                         store_path=self.test_folder, action_select_data=data, execution_time=self.execution_time,\
@@ -763,6 +786,7 @@ def main(args=None):
     test_id = 'None'
     goal_ob_id = -1
     goal_pose_id = -1
+    start_node_id = -1
     influence_radius = 1.6
     n_actions = 17
     lookahead_node_creation = 8
@@ -779,6 +803,9 @@ def main(args=None):
         elif sys.argv[i] == '-goal_pose_id' and i + 1 < len(sys.argv):
             goal_pose_id = int(sys.argv[i + 1])
             i += 2
+        elif sys.argv[i] == '-start_node_id' and i + 1 < len(sys.argv):
+            start_node_id = int(sys.argv[i + 1])
+            i += 2
         elif sys.argv[i] == '-influence_radius' and i + 1 < len(sys.argv):
             influence_radius = float(sys.argv[i + 1])
             i += 2
@@ -791,7 +818,7 @@ def main(args=None):
         else:
             i += 1
 
-    node = AIFProcessServer(test_id, goal_ob_id, goal_pose_id, influence_radius, n_actions, lookahead_node_creation)
+    node = AIFProcessServer(test_id=test_id, goal_ob_id=goal_ob_id, goal_pose_id=goal_pose_id, start_node_id=start_node_id, influence_radius=influence_radius, n_actions=n_actions, lookahead_node_creation=lookahead_node_creation)
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()

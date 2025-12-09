@@ -3,8 +3,8 @@
 # Launch all ROS2 nodes in separate terminals with logging on remote robot
 # Created for aimapp project
 #
-# Usage: ./launch_model_as_action_robot.sh [test_id] [influence_radius] [n_actions] [lookahead_node_creation]
-# Example: ./launch_model_as_action_robot.sh 5 1.6 17 8
+# Usage: ./launch_model_as_action_robot.sh [test_id] [goal_ob_id] [goal_pose_id] [start_node_id] [influence_radius] [n_actions] [lookahead_node_creation]
+# Example: ./launch_model_as_action_robot.sh 5 10 -1 0 1.6 17 8
 
 # Robot SSH configuration
 ROBOT_USER="husarion"
@@ -14,9 +14,12 @@ ROBOT_ROS_DIR="ros2_ws"
 
 # Get command line arguments (all optional with defaults)
 TEST_ID="${1:-None}"
-INFLUENCE_RADIUS="${2:-1.6}"
-N_ACTIONS="${3:-17}"
-LOOKAHEAD_NODE_CREATION="${4:-8}"
+GOAL_OB_ID="${2:--1}"
+GOAL_POSE_ID="${3:--1}"
+START_NODE_ID="${4:--1}"
+INFLUENCE_RADIUS="${5:-1.6}"
+N_ACTIONS="${6:-17}"
+LOOKAHEAD_NODE_CREATION="${7:-8}"
 
 # Create log directory
 LOG_DIR="$HOME/aimapp_logs/$(date +%Y%m%d_%H%M%S)"
@@ -24,6 +27,9 @@ mkdir -p "$LOG_DIR"
 echo "Logs will be saved to: $LOG_DIR"
 echo "Connecting to robot at: $ROBOT_SSH"
 echo "Test ID: $TEST_ID"
+echo "Goal Observation ID: $GOAL_OB_ID"
+echo "Goal Pose ID: $GOAL_POSE_ID"
+echo "Starting Node ID: $START_NODE_ID"
 echo "Model Parameters: influence_radius=$INFLUENCE_RADIUS, n_actions=$N_ACTIONS, lookahead_node_creation=$LOOKAHEAD_NODE_CREATION"
 
 # Check if SSH key-based authentication is set up
@@ -528,9 +534,10 @@ ssh -t -X $ROBOT_SSH '
 cd $ROBOT_ROS_DIR
 source install/setup.bash
 echo \"Starting minimal agent with test_id=$TEST_ID...\"
+echo \"Goal Parameters: goal_ob_id=$GOAL_OB_ID, goal_pose_id=$GOAL_POSE_ID, start_node_id=$START_NODE_ID\"
 echo \"Model Parameters: influence_radius=$INFLUENCE_RADIUS, n_actions=$N_ACTIONS, lookahead=$LOOKAHEAD_NODE_CREATION\"
 echo \"Press Ctrl-C to stop this node\"
-ros2 launch aimapp minimal_agent_launch.py test_id:=$TEST_ID influence_radius:=$INFLUENCE_RADIUS n_actions:=$N_ACTIONS lookahead_node_creation:=$LOOKAHEAD_NODE_CREATION 2>&1
+ros2 launch aimapp minimal_agent_launch.py test_id:=$TEST_ID goal_ob_id:=$GOAL_OB_ID goal_pose_id:=$GOAL_POSE_ID start_node_id:=$START_NODE_ID influence_radius:=$INFLUENCE_RADIUS n_actions:=$N_ACTIONS lookahead_node_creation:=$LOOKAHEAD_NODE_CREATION 2>&1
 bash
 '"
 
