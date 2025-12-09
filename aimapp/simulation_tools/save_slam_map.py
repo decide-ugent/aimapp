@@ -12,7 +12,6 @@ class SaveSLAMMAP(Node):
         super().__init__('save_slam_map')
 
         self.tests_directory = os.getcwd() + '/latest_slam_map'
-        self.save_requested = False
         self.is_saving = False
 
         self.sub = self.create_subscription(
@@ -35,15 +34,13 @@ class SaveSLAMMAP(Node):
 
         self.get_logger().info('SLAM serialize service is ready')
         self.get_logger().info(f'Will save SLAM map to: {self.tests_directory}')
-        self.get_logger().info('Waiting for first odometry message to trigger save...')
+        self.get_logger().info('Waiting for odometry message to trigger save...')
 
 
     def odom_callback(self, msg):
-        # Only save once when first odom is received
-        if not self.save_requested and not self.is_saving:
-            self.save_requested = True
+        if not self.is_saving:
             self.is_saving = True
-            self.get_logger().info(f'First odometry received, saving SLAM map to {self.tests_directory}')
+            self.get_logger().info(f'odometry received, saving SLAM map to {self.tests_directory}')
             self.save_slam_map(self.tests_directory)
 
     def save_slam_map(self, store_path: str):
@@ -63,6 +60,10 @@ class SaveSLAMMAP(Node):
 
         # Path for SLAM serialized map (without extension, SLAM toolbox adds it)
         map_filename = str(store_path / 'slam_map')
+        
+        if os.path. exists(map_filename + 'posegraph'):
+            os.remove(map_filename + 'posegraph')
+            os.remove(map_filename + 'data')
 
         request = SerializePoseGraph.Request()
         request.filename = map_filename

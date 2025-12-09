@@ -8,7 +8,7 @@
 
 # Robot SSH configuration
 ROBOT_USER="husarion"
-ROBOT_IP="10.10.131.145"
+ROBOT_IP="192.168.1.2"
 ROBOT_SSH="${ROBOT_USER}@${ROBOT_IP}"
 ROBOT_ROS_DIR="ros2_ws"
 
@@ -48,6 +48,7 @@ echo "Test ID: $TEST_ID"
 #         MAP_FILE="$LOCAL_MAP_DIR/map.yaml"
 #         echo "SUCCESS: Map files downloaded to $LOCAL_MAP_DIR"
 #     else
+
 #         echo "WARNING: Could not find map files in $REMOTE_MAP_DIR"
 #         echo "SLAM will start in mapping mode instead of localization mode"
 #     fi
