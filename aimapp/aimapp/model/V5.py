@@ -152,6 +152,7 @@ class Ours_V5_RW(Agent):
         self.qs_step = 0
      
         self.current_pose = start_pose
+        self.PoseMemory.reset_odom(start_pose)
         if init_qs is None:
             
             self.D = self._construct_D_prior()

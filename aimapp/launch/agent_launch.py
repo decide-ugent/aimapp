@@ -9,6 +9,9 @@ DESKTOP_RESULTS_FOLDER=os.getcwd()
 
 model_dir = LaunchConfiguration('model_dir', default='None')
 goal_path = LaunchConfiguration('goal_path', default='None')
+goal_ob_id = LaunchConfiguration('goal_ob_id', default='-1')
+goal_pose_id = LaunchConfiguration('goal_pose_id', default='-1')
+start_node_id = LaunchConfiguration('start_node_id', default='-1')
 influence_radius = LaunchConfiguration('influence_radius', default='1.6')
 n_actions = LaunchConfiguration('n_actions', default='17')
 lookahead_node_creation = LaunchConfiguration('lookahead_node_creation', default='8')
@@ -20,6 +23,8 @@ def generate_launch_description():
             namespace='agent',
             executable='main.py',
             arguments=['-model_dir',model_dir, '-goal_path',goal_path,
+                      '-goal_ob_id', goal_ob_id, '-goal_pose_id', goal_pose_id,
+                      '-start_node_id', start_node_id,
                       '-influence_radius', influence_radius,
                       '-n_actions', n_actions,
                       '-lookahead_node_creation', lookahead_node_creation]
@@ -81,6 +86,21 @@ def generate_launch_description():
         'goal_path',
         default_value='None',
         description='Path to goal file'
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'goal_ob_id',
+        default_value='-1',
+        description='Goal observation ID (-1 if not specified)'
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'goal_pose_id',
+        default_value='-1',
+        description='Goal pose ID (-1 if not specified)'
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'start_node_id',
+        default_value='-1',
+        description='Starting node ID in the model (-1 = use latest node)'
     ))
     ld.add_action(DeclareLaunchArgument(
         'influence_radius',

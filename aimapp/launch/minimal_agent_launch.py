@@ -10,6 +10,9 @@ def generate_launch_description():
     ld =  LaunchDescription()
 
     test_id = LaunchConfiguration('test_id', default='None')
+    goal_ob_id = LaunchConfiguration('goal_ob_id', default='-1')
+    goal_pose_id = LaunchConfiguration('goal_pose_id', default='-1')
+    start_node_id = LaunchConfiguration('start_node_id', default='-1')
     influence_radius = LaunchConfiguration('influence_radius', default='1.6')
     n_actions = LaunchConfiguration('n_actions', default='17')
     lookahead_node_creation = LaunchConfiguration('lookahead_node_creation', default='8')
@@ -29,6 +32,8 @@ def generate_launch_description():
             package='aimapp',
             executable='action_process_no_motion.py',
             arguments=['-test_id',test_id,
+                      '-goal_ob_id', goal_ob_id, '-goal_pose_id', goal_pose_id,
+                      '-start_node_id', start_node_id,
                       '-influence_radius', influence_radius,
                       '-n_actions', n_actions,
                       '-lookahead_node_creation', lookahead_node_creation]
@@ -55,6 +60,21 @@ def generate_launch_description():
         'test_id',
         default_value='None',
         description='Test ID for continuing previous experiment'
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'goal_ob_id',
+        default_value='-1',
+        description='Goal observation ID (-1 if not specified)'
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'goal_pose_id',
+        default_value='-1',
+        description='Goal pose ID (-1 if not specified)'
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'start_node_id',
+        default_value='-1',
+        description='Starting node ID in the model (-1 = use latest node)'
     ))
     ld.add_action(DeclareLaunchArgument(
         'influence_radius',

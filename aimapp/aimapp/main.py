@@ -25,12 +25,14 @@ os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 class HighLevelNav_ROSInterface(Node):
 
-    def __init__(self, model_dir, goal_path, influence_radius=1.6, n_actions=17, lookahead_node_creation=8):
+    def __init__(self, model_dir, goal_path, goal_ob_id=-1, goal_pose_id=-1, start_node_id=-1, influence_radius=1.6, n_actions=17, lookahead_node_creation=8):
         super().__init__('HighLevelNav_model')
         self.get_logger().info('HighLevelNav_model node has been started.')
 
         self.model_dir = model_dir
         self.goal_path = goal_path
+        self.goal_id = [goal_ob_id, goal_pose_id]
+        self.start_node_id = start_node_id
 
         #dist motion in m
         self.influence_radius = influence_radius
@@ -101,13 +103,33 @@ class HighLevelNav_ROSInterface(Node):
             self.model.max_rollout_depth = 10 # Maximum depth for the simulation (rollout) phase
             self.model.c_param = 5
 
+            # Reset model to start_node_id if provided
+            if self.start_node_id >= 0:
+                self.get_logger().info(f'Resetting model to start node {self.start_node_id}')
+
+                # Extract pose from node ID
+                start_pose = self.model.PoseMemory.id_to_pose(self.start_node_id)
+                self.get_logger().info(f'Start pose from node {self.start_node_id}: {start_pose}')
+
+                # Reset model to this pose
+                self.model.reset(start_pose)
+
+                # Update self.qs with node_id - all zeros except at start_node_id index
+                import aimapp.model.pymdp.utils as utils
+                self.model.qs = utils.obj_array_uniform(self.model.num_states)
+                for i in range(len(self.model.qs)):
+                    self.model.qs[i] = np.zeros(len(self.model.qs[i]))
+                self.model.qs[0][self.start_node_id] = 1.0  # Set belief at start_node_id for pose state
+
+                self.get_logger().info(f'Model reset to start node {self.start_node_id} at pose {start_pose}')
+
             obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(n_actions)
             self.get_logger().info('start POSE: ' + str(self.model.PoseMemory.get_odom())+', '+str(self.model.current_pose))
 
             #self.model.reset()
             #p_idx = self.model.infer_position_given_ob(ob_id, z_score=2)
             #self.share_believed_odom(p_idx) #send internally believed pose to /odom so it matches internal belief
-        
+
             self.get_logger().info('ob id :'+ str(ob_id) + 'and match score: '+ str(ob_match_score))
             #self.get_logger().info('QS: ' + str(self.model.get_belief_over_states()[0])+'len '+ str(len(self.model.get_belief_over_states()[0])))
             #self.get_logger().info('POSE: ' +str(self.model.PoseMemory.get_odom())+','+str(self.model.current_pose) + ', p_idx: ' + str(p_idx))
@@ -117,10 +139,13 @@ class HighLevelNav_ROSInterface(Node):
 
     def set_navigation_mode(self)->None:
         """ Check if we have a goal and if the goal is valid.
-        If no (valid) goal, we explore, else we desire to reach goal with a set weight on the preference 
+        If no (valid) goal, we explore, else we desire to reach goal with a set weight on the preference
         """
         ob_id = None
-        if self.goal_path != 'None':
+        goal_id = self.goal_id.copy()
+
+        # Check if goal_path is a string (legacy mode with image matching)
+        if isinstance(self.goal_path, str) and self.goal_path != 'None':
             img = process_path(self.goal_path)
             if img is not None:
                 img = remove_white_border(img)
@@ -130,11 +155,29 @@ class HighLevelNav_ROSInterface(Node):
                     self.get_logger().warning(str(e))
                 if not isinstance(ob_id,int):
                     self.get_logger().info(str(ob_id) + str(type(ob_id)) + 'is not a proper integer, matching scores: '+str(ob_match_score)+', goal set aborted')
-                    
-        if ob_id is not None:
-            self.get_logger().info('We are aiming for goal ' + str(ob_id))
-            #We give the panorama id and no pose as objective
-            self.model.goal_oriented_navigation([ob_id,-1], pref_weight = 10.0)
+                    ob_id = None
+            if ob_id is not None:
+                goal_id = [ob_id, -1]  # Use image-matched ob_id with no pose
+        # Otherwise, check if goal IDs are specified directly (new mode)
+        else:
+            # Validate each goal_id element against model bounds
+            has_valid_goal = False
+            for i in range(len(goal_id)):
+                if goal_id[i] >= 0:  # -1 means not specified
+                    if goal_id[i] < len(self.model.A[i]):
+                        self.get_logger().info(f'Goal ID[{i}]={goal_id[i]} is valid')
+                        has_valid_goal = True
+                    else:
+                        self.get_logger().error(f'Goal ID[{i}]={goal_id[i]} is out of bounds (model.A[{i}] has {len(self.model.A[i])} elements). Setting to -1.')
+                        goal_id[i] = -1
+
+            if not has_valid_goal:
+                goal_id = None  # No valid goals specified
+
+        if goal_id is not None and any(g >= 0 for g in goal_id):
+            self.get_logger().info(f'We are aiming for goal {goal_id}')
+            # We give the goal IDs as objective
+            self.model.goal_oriented_navigation(goal_id, pref_weight = 10.0)
             preferred_states = np.argwhere(self.model.Cs > np.amin((self.model.Cs>0).astype(float))).flatten()
             self.get_logger().info('Prefered states ' + str(preferred_states))
         else:
@@ -352,6 +395,9 @@ def main(args=None):
     # Parse command line arguments
     model_dir = 'None'
     goal_path = 'None'
+    goal_ob_id = -1
+    goal_pose_id = -1
+    start_node_id = -1
     influence_radius = 1.6
     n_actions = 13 # circle / 12 + STAY action
     lookahead_node_creation = 8
@@ -365,6 +411,15 @@ def main(args=None):
         elif sys.argv[i] == '-goal_path' and i + 1 < len(sys.argv):
             goal_path = sys.argv[i + 1]
             i += 2
+        elif sys.argv[i] == '-goal_ob_id' and i + 1 < len(sys.argv):
+            goal_ob_id = int(sys.argv[i + 1])
+            i += 2
+        elif sys.argv[i] == '-goal_pose_id' and i + 1 < len(sys.argv):
+            goal_pose_id = int(sys.argv[i + 1])
+            i += 2
+        elif sys.argv[i] == '-start_node_id' and i + 1 < len(sys.argv):
+            start_node_id = int(sys.argv[i + 1])
+            i += 2
         elif sys.argv[i] == '-influence_radius' and i + 1 < len(sys.argv):
             influence_radius = float(sys.argv[i + 1])
             i += 2
@@ -377,7 +432,7 @@ def main(args=None):
         else:
             i += 1
 
-    highlevelnav = HighLevelNav_ROSInterface(model_dir, goal_path, influence_radius, n_actions, lookahead_node_creation)
+    highlevelnav = HighLevelNav_ROSInterface(model_dir, goal_path, goal_ob_id, goal_pose_id, start_node_id, influence_radius, n_actions, lookahead_node_creation)
    
     store_dir = create_save_data_dir()
     highlevelnav.store_dir = store_dir
