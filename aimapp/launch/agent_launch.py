@@ -7,7 +7,7 @@ from launch.substitutions import LaunchConfiguration
 DESKTOP_RESULTS_FOLDER=os.getcwd()
 
 
-model_dir = LaunchConfiguration('model_dir', default='None')
+test_id = LaunchConfiguration('test_id', default='None')
 goal_path = LaunchConfiguration('goal_path', default='None')
 goal_ob_id = LaunchConfiguration('goal_ob_id', default='-1')
 goal_pose_id = LaunchConfiguration('goal_pose_id', default='-1')
@@ -22,7 +22,7 @@ def generate_launch_description():
             package='aimapp',
             namespace='agent',
             executable='main.py',
-            arguments=['-model_dir',model_dir, '-goal_path',goal_path,
+            arguments=['-test_id',test_id, '-goal_path',goal_path,
                       '-goal_ob_id', goal_ob_id, '-goal_pose_id', goal_pose_id,
                       '-start_node_id', start_node_id,
                       '-influence_radius', influence_radius,
@@ -78,9 +78,9 @@ def generate_launch_description():
 
     # Declare launch arguments
     ld.add_action(DeclareLaunchArgument(
-        'model_dir',
+        'test_id',
         default_value='None',
-        description='Directory containing saved model'
+        description='Test ID for loading saved model (-1 or None for new model)'
     ))
     ld.add_action(DeclareLaunchArgument(
         'goal_path',

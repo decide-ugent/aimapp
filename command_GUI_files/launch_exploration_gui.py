@@ -324,8 +324,9 @@ class ExplorationLauncherGUI:
                 subprocess.Popen(['bash', script_path, test_id, '-1', '-1', '-1', influence_radius,  n_actions, lookahead],
                                cwd=self.ros_ws_dir)
             else:
-                # Pass model parameters for autonomous mode
-                subprocess.Popen(['bash', script_path, influence_radius, n_actions, lookahead],
+                # Autonomous mode also needs all 7 parameters (test_id set to None, goals all -1 for exploration)
+                # Format: test_id goal_ob_id goal_pose_id start_node_id influence_radius n_actions lookahead_node_creation
+                subprocess.Popen(['bash', script_path, test_id if test_id else 'None', '-1', '-1', '-1', influence_radius, n_actions, lookahead],
                                cwd=self.ros_ws_dir)
 
             # Update status

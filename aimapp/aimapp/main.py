@@ -478,7 +478,7 @@ def main(args=None):
         highlevelnav.motion_client.set_initial_pose()
 
 
-    obstacle_dist_per_actions,ob_id, ob_match_score = highlevelnav.initialise_model(n_actions, influence_radius, lookahead_node_creation)
+    obstacle_dist_per_actions,ob_id, ob_match_score = highlevelnav.initialise_model(n_actions)
 
     highlevelnav.set_navigation_mode()
     save_data_process(highlevelnav, ob_id=ob_id, ob_match_score= ob_match_score, obstacle_dist_per_actions= obstacle_dist_per_actions, store_dir=store_dir)

@@ -1,70 +1,528 @@
 #!/bin/bash
 
-# Launch all ROS2 nodes for AUTONOMOUS EXPLORATION
-# Created for aimapp project
+# Launch all ROS2 nodes in separate terminals with logging on remote robot
+# Created for aimapp project - AUTONOMOUS MODE (uses main.py via agent_launch.py)
 #
-# Usage: ./launch_autonomous_exploration.sh [influence_radius] [n_actions] [lookahead_node_creation]
-# Example: ./launch_autonomous_exploration.sh 1.6 17 8
+# Usage: ./launch_autonomous_exploration.sh [test_id] [goal_ob_id] [goal_pose_id] [start_node_id] [influence_radius] [n_actions] [lookahead_node_creation]
+# Example: ./launch_autonomous_exploration.sh 5 10 -1 0 1.6 17 8
+
+# Robot SSH configuration
+ROBOT_USER="husarion"
+ROBOT_IP="192.168.1.2"
+ROBOT_SSH="${ROBOT_USER}@${ROBOT_IP}"
+ROBOT_ROS_DIR="ros2_ws"
 
 # Get command line arguments (all optional with defaults)
-INFLUENCE_RADIUS="${1:-1.6}"
-N_ACTIONS="${2:-17}"
-LOOKAHEAD_NODE_CREATION="${3:-8}"
+TEST_ID="${1:-None}"
+GOAL_OB_ID="${2:--1}"
+GOAL_POSE_ID="${3:--1}"
+START_NODE_ID="${4:--1}"
+INFLUENCE_RADIUS="${5:-1.6}"
+N_ACTIONS="${6:-17}"
+LOOKAHEAD_NODE_CREATION="${7:-8}"
 
 # Create log directory
-LOG_DIR="$HOME/aimapp_logs/$(date +%Y%m%d_%H%M%S)_autonomous"
+LOG_DIR="$HOME/aimapp_logs/$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$LOG_DIR"
 echo "Logs will be saved to: $LOG_DIR"
+echo "Connecting to robot at: $ROBOT_SSH"
+echo "Test ID: $TEST_ID"
+echo "Goal Observation ID: $GOAL_OB_ID"
+echo "Goal Pose ID: $GOAL_POSE_ID"
+echo "Starting Node ID: $START_NODE_ID"
 echo "Model Parameters: influence_radius=$INFLUENCE_RADIUS, n_actions=$N_ACTIONS, lookahead_node_creation=$LOOKAHEAD_NODE_CREATION"
 
-# Terminal 1: Joy2Twist gamepad controller
-gnome-terminal --tab --title="Joy2Twist" -- bash -c "
-echo 'Starting Joy2Twist gamepad controller...'
-ros2 launch joy2twist gamepad_controller.launch.py joy2twist_params_file:=/home/husarion/joy2twist.yaml 2>&1 | tee $LOG_DIR/joy2twist.log
-exec bash"
+# Check if SSH key-based authentication is set up
+echo "Checking SSH connection..."
+if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "$ROBOT_SSH" echo "SSH connection successful" 2>/dev/null; then
+    echo "ERROR: Cannot connect to robot via SSH without password."
+    echo "Please set up SSH key-based authentication first:"
+    echo ""
+    echo "1. Generate SSH key (if you don't have one):"
+    echo "   ssh-keygen -t rsa -b 4096"
+    echo ""
+    echo "2. Copy your public key to the robot:"
+    echo "   ssh-copy-id $ROBOT_SSH"
+    echo ""
+    echo "3. Test the connection:"
+    echo "   ssh $ROBOT_SSH 'echo Connection successful'"
+    echo ""
+    echo "After setting up passwordless SSH, run this script again."
+    exit 1
+fi
 
-sleep 2
+echo "SSH connection verified. Launching terminals..."
 
-# Terminal 2: Node visualizer
-gnome-terminal --tab --title="Visualizer" -- bash -c "
-echo 'Starting node visualizer...'
-ros2 run aimapp node_visualizer.py 2>&1 | tee $LOG_DIR/node_visualizer.log
-exec bash"
+# Sync time with robot
+echo "Syncing time with robot..."
+CURRENT_DATE=$(date +"%Y-%m-%d %H:%M:%S")
+ssh "$ROBOT_SSH" "sudo date -s '$CURRENT_DATE'" >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+    echo "Time synced successfully: $CURRENT_DATE"
+else
+    echo "WARNING: Failed to sync time with robot (continuing anyway)"
+fi
 
-sleep 2
+# Extract initial pose from model if TEST_ID is provided
+ODOM_X="0.0"
+ODOM_Y="0.0"
 
-# Terminal 3: Start rosbot and shift odom
-gnome-terminal --tab --title="Rosbot-Odom" -- bash -c "
-echo 'Starting rosbot...'
-bash start_rosbot.sh 2>&1 | tee $LOG_DIR/start_rosbot.log
-echo 'Shifting husarion odom...'
-ros2 run aimapp shift_husarion_odom.py 0.0 0.0 2>&1 | tee $LOG_DIR/shift_odom.log
-exec bash"
+if [ "$TEST_ID" != "None" ]; then
+    echo "Extracting initial pose from test $TEST_ID..."
+    echo "Connecting to robot and searching for model file..."
 
-sleep 2
+    # Create a Python script to extract current_pose from model.pkl
+    POSE_OUTPUT=$(ssh $ROBOT_SSH "cd $ROBOT_ROS_DIR && source install/setup.bash && python3 -c \"
+import pickle
+import os
+import sys
 
-# Terminal 4: Nav2 husarion launch
+test_id = '$TEST_ID'
+test_dir = os.path.join('tests', test_id)
+
+# Print debug info to stderr so it doesn't interfere with coordinate output
+print(f'DEBUG: Current directory: {os.getcwd()}', file=sys.stderr)
+print(f'DEBUG: Looking for test directory: {test_dir}', file=sys.stderr)
+
+if not os.path.exists(test_dir):
+    print(f'ERROR: Test directory not found: {test_dir}', file=sys.stderr)
+    sys.exit(1)
+
+model_path = os.path.join(test_dir, 'model.pkl')
+print(f'DEBUG: Looking for model at: {model_path}', file=sys.stderr)
+
+if not os.path.exists(model_path):
+    print(f'ERROR: model.pkl not found in {test_dir}', file=sys.stderr)
+    sys.exit(1)
+
+try:
+    print('DEBUG: Loading model.pkl...', file=sys.stderr)
+    with open(model_path, 'rb') as f:
+        model = pickle.load(f)
+
+    print('DEBUG: Model loaded successfully', file=sys.stderr)
+
+    if hasattr(model, 'current_pose'):
+        pose = model.current_pose
+        print(f'DEBUG: Found current_pose: {pose}', file=sys.stderr)
+        # Output only the coordinates to stdout (this gets captured)
+        print(f'{pose[0]} {pose[1]}')
+    else:
+        print('ERROR: model.current_pose attribute not found', file=sys.stderr)
+        sys.exit(1)
+except Exception as e:
+    print(f'ERROR: Failed to load model: {e}', file=sys.stderr)
+    sys.exit(1)
+\" 2>&1")
+
+    # Capture the exit code
+    EXIT_CODE=$?
+
+    # Display all output (includes both stdout and stderr due to 2>&1)
+    echo "$POSE_OUTPUT"
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        # Parse the output - get the last line which should be the coordinates
+        COORDS=$(echo "$POSE_OUTPUT" | tail -n 1)
+        ODOM_X=$(echo $COORDS | awk '{print $1}')
+        ODOM_Y=$(echo $COORDS | awk '{print $2}')
+
+        # Check if we got valid numbers
+        if [[ "$ODOM_X" =~ ^-?[0-9]+\.?[0-9]*$ ]] && [[ "$ODOM_Y" =~ ^-?[0-9]+\.?[0-9]*$ ]]; then
+            echo "SUCCESS!: Extracted pose from model: x=$ODOM_X, y=$ODOM_Y"
+        else
+            echo "WARNING: Could not parse coordinates, using default (0.0, 0.0)"
+            ODOM_X="0.0"
+            ODOM_Y="0.0"
+        fi
+    else
+        echo "WARNING: Could not extract pose from model, using default (0.0, 0.0)"
+        ODOM_X="0.0"
+        ODOM_Y="0.0"
+    fi
+fi
+
+echo "Using odometry shift: x=-$ODOM_X, y=-$ODOM_Y"
+
+# Calculate negated values for odometry shift
+NEG_ODOM_X=$(python3 -c "print(-float('$ODOM_X'))")
+NEG_ODOM_Y=$(python3 -c "print(-float('$ODOM_Y'))")
+
+
+
+
+
+# # # # # Terminal 1: Joy2Twist gamepad controller
+# gnome-terminal --tab --title="Joy2Twist" -- bash -c "
+# ssh -t -X $ROBOT_SSH '
+# cd $ROBOT_ROS_DIR
+# source install/setup.bash
+# echo \"Starting Joy2Twist gamepad controller...\"
+# echo \"Press Ctrl-C to stop this node\"
+# ros2 launch joy2twist gamepad_controller.launch.py joy2twist_params_file:=/home/husarion/joy2twist.yaml 2>&1
+# bash
+# '"
+
+
+# # sleep 2
+# # ----------------------------------------------------- INIT ROBOT -------------------------------------------------
+
+# # Terminal 3: Start rosbot and initialize EKF pose
+gnome-terminal --tab --title="Rosbot-Init" -- bash -c "
+ssh -t -X $ROBOT_SSH '
+echo \"Starting rosbot!\"
+bash start_rosbot.sh 2>&1
+cd $ROBOT_ROS_DIR
+source install/setup.bash
+echo \"\"
+echo \"To attach to rosbot: tmux attach -t rosbot_startup\"
+echo \"To detach: Press Ctrl-b, then d\"
+echo \"\"
+echo \"Waiting for EKF node to be ready...\"
+sleep 5
+
+if [ \"$TEST_ID\" != \"None\" ]; then
+    echo \"Setting initial EKF pose to x=$ODOM_X, y=$ODOM_Y using /set_pose topic...\"
+
+    # Publish to /set_pose topic multiple times to ensure EKF receives it
+    for i in 1 2 3; do
+        ros2 topic pub --once /set_pose geometry_msgs/msg/PoseWithCovarianceStamped \"{
+          header: {
+            stamp: {sec: 0, nanosec: 0},
+            frame_id: 'odom'
+          },
+          pose: {
+            pose: {
+              position: {x: $ODOM_X, y: $ODOM_Y, z: 0.0},
+              orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+            },
+            covariance: [0.1, 0.0, 0.0, 0.0, 0.0, 0.0,
+                         0.0, 0.1, 0.0, 0.0, 0.0, 0.0,
+                         0.0, 0.0, 0.1, 0.0, 0.0, 0.0,
+                         0.0, 0.0, 0.0, 0.1, 0.0, 0.0,
+                         0.0, 0.0, 0.0, 0.0, 0.1, 0.0,
+                         0.0, 0.0, 0.0, 0.0, 0.0, 0.1]
+          }
+        }\"
+        sleep 1
+    done
+
+    echo \"EKF initial pose set successfully!\"
+else
+    echo \"No test_id - using default pose (0, 0)\"
+fi
+
+echo \"\"
+ros2 run aimapp shift_husarion_odom.py 0.0 0.0
+echo \"Press Ctrl-C to exit\"
+bash
+'
+"
+
+# # # This shift is useful when we do not restart the robot but just the model (thus initial position is not 0.0 0.0)
+
+# Determine which Nav2 and SLAM maps to load
+MAP_FILE=""
+SLAM_MAP_ARG=""
+
+if [ "$TEST_ID" != "None" ]; then
+    echo "=========================================="
+    echo "Fetching maps from robot for test $TEST_ID..."
+    echo "=========================================="
+
+    # Create local directory for maps
+    LOCAL_MAP_DIR="$PWD/latest_slam_map/test_${TEST_ID}"
+    mkdir -p "$LOCAL_MAP_DIR"
+
+    REMOTE_MAP_DIR="$ROBOT_ROS_DIR/tests/$TEST_ID"
+
+    # ===== FETCH NAV2 MAP FILES (map.yaml and map.pgm) =====
+    echo ""
+    echo "--- Fetching Nav2 map files (.yaml and .pgm) ---"
+    scp "${ROBOT_SSH}:${REMOTE_MAP_DIR}/map.yaml" "$LOCAL_MAP_DIR/" 2>/dev/null
+    scp "${ROBOT_SSH}:${REMOTE_MAP_DIR}/map.pgm" "$LOCAL_MAP_DIR/" 2>/dev/null
+
+    if [ -f "$LOCAL_MAP_DIR/map.yaml" ] && [ -f "$LOCAL_MAP_DIR/map.pgm" ]; then
+        # Update the image path in map.yaml to point to local file
+        sed -i "s|image:.*|image: $LOCAL_MAP_DIR/map.pgm|g" "$LOCAL_MAP_DIR/map.yaml"
+        MAP_FILE="$LOCAL_MAP_DIR/map.yaml"
+        echo "SUCCESS: Nav2 map files downloaded to $LOCAL_MAP_DIR"
+        echo "  - map.yaml: $LOCAL_MAP_DIR/map.yaml"
+        echo "  - map.pgm: $LOCAL_MAP_DIR/map.pgm"
+    else
+        echo "WARNING: Could not find Nav2 map files (map.yaml/map.pgm) in robot:$REMOTE_MAP_DIR"
+        echo "Nav2 will start without a map"
+    fi
+
+    # ===== FETCH SLAM MAP FILES (slam_map.data and slam_map.posegraph) =====
+    echo ""
+    echo "--- Checking for SLAM map files (.data and .posegraph) ---"
+
+    # SLAM maps are stored locally on the laptop in latest_slam_map directory
+    LAPTOP_SLAM_DIR="latest_slam_map"
+
+    # Check if SLAM map exists locally
+    if [ -f "$LAPTOP_SLAM_DIR/slam_map.posegraph" ] && [ -f "$LAPTOP_SLAM_DIR/slam_map.data" ]; then
+        # Copy SLAM map files to the test-specific directory
+        cp "$LAPTOP_SLAM_DIR/slam_map.data" "$LOCAL_MAP_DIR/" 2>/dev/null
+        cp "$LAPTOP_SLAM_DIR/slam_map.posegraph" "$LOCAL_MAP_DIR/" 2>/dev/null
+
+        if [ -f "$LOCAL_MAP_DIR/slam_map.data" ] && [ -f "$LOCAL_MAP_DIR/slam_map.posegraph" ]; then
+            # Use local path (without extension, SLAM toolbox will add it)
+            SLAM_MAP_ARG="$LOCAL_MAP_DIR/slam_map"
+            echo "SUCCESS: SLAM map files copied from $LAPTOP_SLAM_DIR to $LOCAL_MAP_DIR"
+            echo "  - slam_map.data: $LOCAL_MAP_DIR/slam_map.data"
+            echo "  - slam_map.posegraph: $LOCAL_MAP_DIR/slam_map.posegraph"
+            echo "SLAM will load and continue from local saved map: $LOCAL_MAP_DIR/slam_map"
+        else
+            echo "WARNING: Failed to copy SLAM map files, starting fresh mapping"
+        fi
+    else
+        echo "No saved SLAM map found in $LAPTOP_SLAM_DIR, starting fresh SLAM mapping"
+    fi
+
+    echo "=========================================="
+    echo ""
+else
+    echo "No test_id provided, starting with fresh maps"
+fi
+
+# Wait for rosbot to fully initialize before starting SLAM
+echo "Waiting for rosbot initialization to complete..."
+sleep 5
+
+# Determine which map to use for Nav2
+MAP_ARG=""
+if [ -n "$MAP_FILE" ]; then
+    MAP_ARG="$MAP_FILE"
+    echo "Nav2 will use local saved map from test $TEST_ID at: $MAP_FILE"
+else
+    echo "No saved map available, Nav2 will start without a map"
+fi
+
+# # ----------------------------------------------------- INIT NAV2 -------------------------------------------------
+
+# Terminal 4: Nav2 husarion launch (LAPTOP)
 gnome-terminal --tab --title="Nav2" -- bash -c "
-echo 'Starting Nav2 husarion...'
-ros2 launch aimapp nav2_husarion_launch.py 2>&1 | tee $LOG_DIR/nav2_husarion.log
-exec bash"
+source install/setup.bash
+echo \"Starting Nav2 husarion...\"
+if [ -n \"$MAP_ARG\" ]; then
+    echo \"Using map: $MAP_ARG\"
+    ros2 launch aimapp nav2_husarion_launch.py map:=$MAP_ARG 2>&1 &
+else
+    ros2 launch aimapp nav2_husarion_launch.py 2>&1 &
+fi
+NAV2_PID=\$!
+echo \"Nav2 launched with PID \$NAV2_PID\"
+echo \"\"
+echo \"Waiting for Nav2 and AMCL to be ready...\"
+echo \"Checking if /initialpose topic is available...\"
+
+# Wait for the /initialpose topic to be available (indicates AMCL is ready)
+TIMEOUT=30
+ELAPSED=0
+while [ \$ELAPSED -lt \$TIMEOUT ]; do
+    if ros2 topic list | grep -q '/initialpose'; then
+        echo \"AMCL is ready! /initialpose topic found.\"
+        break
+    fi
+    echo \"Waiting for AMCL... (\$ELAPSED/\$TIMEOUT seconds)\"
+    sleep 2
+    ELAPSED=\$((ELAPSED + 2))
+done
+
+if [ \$ELAPSED -ge \$TIMEOUT ]; then
+    echo \"WARNING: Timeout waiting for AMCL to start. Proceeding anyway...\"
+fi
+
+sleep 2
+echo \"\"
+echo \"Setting AMCL initial pose to x=$ODOM_X, y=$ODOM_Y...\"
+echo \"Publishing initial pose 7 times to ensure Nav2 receives it...\"
+
+# Publish initial pose multiple times sequentially (not in background)
+for i in {1..7}; do
+    echo \"  Publish attempt \$i/7\"
+    ros2 topic pub --once /initialpose geometry_msgs/msg/PoseWithCovarianceStamped \"{
+      header: {
+        stamp: {sec: 0, nanosec: 0},
+        frame_id: 'map'
+      },
+      pose: {
+        pose: {
+          position: {x: $ODOM_X, y: $ODOM_Y, z: 0.0},
+          orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+        },
+        covariance: [0.25, 0.0, 0.0, 0.0, 0.0, 0.0,
+                     0.0, 0.25, 0.0, 0.0, 0.0, 0.0,
+                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                     0.0, 0.0, 0.0, 0.0, 0.0, 0.06853]
+      }
+    }\"
+    sleep 1
+done
+
+echo \"AMCL initial pose published successfully!\"
+echo \"Press Ctrl-C to stop this node\"
+wait \$NAV2_PID
+bash
+'"
+
+
+echo "Waiting for AMCL to fully stabilize map->odom transform..."
+sleep 10
+
+# # ----------------------------------------------------- SLAM -------------------------------------------------
+
+# Terminal: SLAM on laptop
+# Note: Variables must be properly expanded before being passed to bash -c
+if [ -n "$SLAM_MAP_ARG" ]; then
+    echo "Launching SLAM with saved map deserialization: $SLAM_MAP_ARG"
+    gnome-terminal --tab --title="SLAM-Laptop" -- bash -c "
+    source install/setup.bash
+    echo '=========================================='
+    echo 'Starting SLAM on laptop with map reload...'
+    echo 'Map file: $SLAM_MAP_ARG'
+    echo '=========================================='
+    echo ''
+    echo 'Step 1: Launching SLAM without map (will deserialize after startup)...'
+    ros2 launch aimapp slam_launch.py use_sim_time:=false 2>&1 &
+    SLAM_PID=\$!
+
+    echo 'Waiting for SLAM services to become available...'
+    TIMEOUT=60
+    ELAPSED=0
+    while [ \$ELAPSED -lt \$TIMEOUT ]; do
+        if ros2 service list | grep -q '/slam_toolbox/pause_new_measurements'; then
+            echo \"SLAM services ready!\"
+            break
+        fi
+        echo \"Waiting for SLAM... (\$ELAPSED/\$TIMEOUT seconds)\"
+        sleep 2
+        ELAPSED=\$((ELAPSED + 2))
+    done
+
+    if [ \$ELAPSED -ge \$TIMEOUT ]; then
+        echo \"ERROR: SLAM services not available after \$TIMEOUT seconds\"
+        echo \"Continuing without deserialization...\"
+        wait \$SLAM_PID
+        bash
+        exit 1
+    fi
+
+    echo 'Waiting additional time for SLAM to fully initialize sensor...'
+    sleep 7
+
+    echo ''
+    echo 'Step 2: Pausing new measurements before deserialization...'
+    timeout 12 ros2 service call /slam_toolbox/pause_new_measurements std_srvs/srv/Empty
+    if [ \$? -ne 0 ]; then
+        echo \"WARNING: Failed to pause measurements (timeout or error)\"
+        echo \"Attempting to continue anyway...\"
+    fi
+    sleep 1
+
+    echo ''
+    echo 'Step 3: Deserializing saved posegraph...'
+    echo '  (Note: AMCL has already set map->odom transform)'
+    timeout 15 ros2 service call /slam_toolbox/deserialize_map slam_toolbox/srv/DeserializePoseGraph \"{filename: '$SLAM_MAP_ARG', match_type: 1, initial_pose: {x: 0.0, y: 0.0, theta: 0.0}}\"
+    if [ \$? -ne 0 ]; then
+        echo \"WARNING: Deserialization failed or timed out\"
+    else
+        echo \"Deserialization completed!\"
+    fi
+    sleep 5
+
+    echo ''
+    echo 'Step 4: Resuming measurements to continue mapping...'
+    timeout 10 ros2 service call /slam_toolbox/resume_new_measurements std_srvs/srv/Empty
+    if [ \$? -ne 0 ]; then
+        echo \"WARNING: Failed to resume measurements\"
+    fi
+
+    echo ''
+    echo '=========================================='
+    echo 'SLAM ready - map reloaded and continuing!'
+    echo '=========================================='
+    wait \$SLAM_PID
+    bash
+    "
+else
+    echo "Launching SLAM with fresh mapping"
+    gnome-terminal --tab --title="SLAM-Laptop" -- bash -c "
+    source install/setup.bash
+    echo '=========================================='
+    echo 'Starting SLAM with fresh mapping...'
+    echo '=========================================='
+    ros2 launch aimapp slam_launch.py use_sim_time:=false 2>&1
+    bash
+    "
+fi
+
+# # ----------------------------------------------------- NODE SAVE SLAM MAP -------------------------------------------------
+
+sleep 5
+
+gnome-terminal --tab --title="SLAM-MAP-SAVER" -- bash -c "
+source install/setup.bash
+echo \"Starting SLAM MAP saver...\"
+echo \"This will save SLAM map when /shifted_odom is received\"
+ros2 run aimapp save_slam_map.py 2>&1
+bash
+"
+# # ----------------------------------------------------- INIT AGENT -------------------------------------------------
+
+
+# Wait for SLAM to initialize before starting agent
+sleep 3
+
+# Terminal 5: Agent launch (AUTONOMOUS - uses main.py)
+gnome-terminal --tab --title="Agent-Autonomous" -- bash -c "
+ssh -t -X $ROBOT_SSH '
+cd $ROBOT_ROS_DIR
+source install/setup.bash
+echo \"Starting AUTONOMOUS agent (main.py) with test_id=$TEST_ID...\"
+echo \"Goal Parameters: goal_ob_id=$GOAL_OB_ID, goal_pose_id=$GOAL_POSE_ID, start_node_id=$START_NODE_ID\"
+echo \"Model Parameters: influence_radius=$INFLUENCE_RADIUS, n_actions=$N_ACTIONS, lookahead=$LOOKAHEAD_NODE_CREATION\"
+echo \"Press Ctrl-C to stop this node\"
+ros2 launch aimapp agent_launch.py test_id:=$TEST_ID goal_ob_id:=$GOAL_OB_ID goal_pose_id:=$GOAL_POSE_ID start_node_id:=$START_NODE_ID influence_radius:=$INFLUENCE_RADIUS n_actions:=$N_ACTIONS lookahead_node_creation:=$LOOKAHEAD_NODE_CREATION 2>&1
+bash
+'"
 
 sleep 2
 
-# Terminal 5: FULL Agent launch (autonomous)
-gnome-terminal --tab --title="Agent-Auto" -- bash -c "
-echo 'Starting AUTONOMOUS agent...'
-echo 'The agent will explore fully autonomously without manual intervention.'
-echo 'Model Parameters: influence_radius=$INFLUENCE_RADIUS, n_actions=$N_ACTIONS, lookahead=$LOOKAHEAD_NODE_CREATION'
-ros2 launch aimapp agent_launch.py influence_radius:=$INFLUENCE_RADIUS n_actions:=$N_ACTIONS lookahead_node_creation:=$LOOKAHEAD_NODE_CREATION 2>&1 | tee $LOG_DIR/agent_launch.log
-exec bash"
+# # ----------------------------------------------------- INIT VISU -------------------------------------------------
+
+# # Terminal 2: Node visualizer
+gnome-terminal --tab --title="Visualizer" -- bash -c "
+ssh -t -X $ROBOT_SSH '
+cd $ROBOT_ROS_DIR
+source install/setup.bash
+echo \"Starting node visualizer...\"
+echo \"Press Ctrl-C to stop this node\"
+ros2 run aimapp node_visualizer.py 2>&1
+bash
+'"
 
 sleep 2
 
-# Terminal 6: Save data
+# # ----------------------------------------------------- INIT SAVE DATA -------------------------------------------------
+
+
+# # Terminal 6: Save data
 gnome-terminal --tab --title="SaveData" -- bash -c "
-echo 'Starting save data node...'
-ros2 run aimapp save_data.py 2>&1 | tee $LOG_DIR/save_data.log
-exec bash"
+ssh -t -X $ROBOT_SSH 'bash -l -c \"
+cd $ROBOT_ROS_DIR;
+source install/setup.bash;
+echo Starting save data node...;
+echo Press Ctrl-C to stop this node;
+ros2 run aimapp save_data.py 2>&1;
+exec bash
+'"
 
-echo "All terminals launched for AUTONOMOUS EXPLORATION. Check logs in: $LOG_DIR"
+
+echo "All terminals launched. Check logs in: $LOG_DIR"
+echo "Mode: AUTONOMOUS (using agent_launch.py with main.py)"
+echo "All nodes run on robot at $ROBOT_SSH"
