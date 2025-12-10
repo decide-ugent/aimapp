@@ -319,8 +319,9 @@ class ExplorationLauncherGUI:
 
             # Launch the script from ROS workspace directory
             if mode == "controlled":
-                # Pass test_id and model parameters for controlled mode
-                subprocess.Popen(['bash', script_path, test_id, influence_radius, n_actions, lookahead],
+                # Pass test_id, goal parameters (all -1 for exploration), and model parameters
+                # Format: test_id goal_ob_id goal_pose_id start_node_id influence_radius n_actions lookahead_node_creation
+                subprocess.Popen(['bash', script_path, test_id, '-1', '-1', '-1', influence_radius,  n_actions, lookahead],
                                cwd=self.ros_ws_dir)
             else:
                 # Pass model parameters for autonomous mode
