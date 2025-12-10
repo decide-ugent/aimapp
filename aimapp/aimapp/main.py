@@ -6,6 +6,7 @@ import copy
 import numpy as np
 from rclpy.node import Node
 from geometry_msgs.msg import Point
+from nav_msgs.msg import OccupancyGrid
 import time
 from cv_bridge import CvBridge
 import cv2
@@ -17,6 +18,7 @@ from aimapp.obs_transf.get_pano_multiple_camera_client import PanoramaMultipleCa
 from aimapp.obs_transf.get_360_camera_client import Panorama360CamClient
 from aimapp.obs_transf.observation_match import ViewMemory
 from aimapp.model.V5 import Ours_V5_RW
+from aimapp.mcts_reward_visualiser import MCTSRewardVisualiser
 
 #visualisations
 from aimapp.visualisation_tools import create_save_data_dir, save_failed_step_data, remove_white_border,\
@@ -53,8 +55,14 @@ class HighLevelNav_ROSInterface(Node):
         self.panorama_results = None
         self.next_possible_actions = [] #For data saving purposes
         self.model = None
+        self.mcts_visualizer = None  # Will be initialized after model is created
+        self.latest_map = None  # Store the latest map from /map topic
+
+        # Check if we're in goal-reaching mode
+        self.is_goal_reaching_mode = (goal_ob_id >= 0) or (goal_pose_id >= 0)
+
         #====== VISUALISATION PARAMS =====#
-        
+
         self.start_time = time.time()
         self.gt_odom = [0,0,0]
         self.store_dir = None
@@ -63,16 +71,29 @@ class HighLevelNav_ROSInterface(Node):
 
         self.publish_believed_odom = self.create_publisher(
             msg_type=Point,
-            topic="/believed_odom",
+            topic="/shifted_odom",
             qos_profile=5)
 
-        
+        # Subscribe to map topic
+        self.map_sub = self.create_subscription(
+            OccupancyGrid,
+            '/map',
+            self.map_callback,
+            5)
+
+
     #==== VISUALISATION CALLBACK ====#
+
+    def map_callback(self, msg):
+        """Callback to receive and store the latest map from /map topic"""
+        if self.latest_map is None:
+            self.get_logger().info('Received first map from /map topic')
+        self.latest_map = msg
 
     def save_model(self):
         ''' create map, transform to cv2, transform to ros msg, publish'''
         pickle_dump_model(self.model)
-       
+
     #==== INITIALISATION METHODS ====#
 
     def initialise_model(self, n_actions:int)-> None:
@@ -134,8 +155,14 @@ class HighLevelNav_ROSInterface(Node):
             self.get_logger().info('ob id :'+ str(ob_id) + 'and match score: '+ str(ob_match_score))
             #self.get_logger().info('QS: ' + str(self.model.get_belief_over_states()[0])+'len '+ str(len(self.model.get_belief_over_states()[0])))
             #self.get_logger().info('POSE: ' +str(self.model.PoseMemory.get_odom())+','+str(self.model.current_pose) + ', p_idx: ' + str(p_idx))
+
+        # Initialize MCTS visualizer if in goal-reaching mode
+        if self.is_goal_reaching_mode and self.model is not None:
+            self.mcts_visualizer = MCTSRewardVisualiser(self, self.model, frame_id='map')
+            self.get_logger().info('MCTS visualizer initialized for goal-reaching mode')
+
         self.save_model()
-        
+
         return obstacle_dist_per_actions, ob_id, ob_match_score
 
     def set_navigation_mode(self)->None:
@@ -285,8 +312,13 @@ class HighLevelNav_ROSInterface(Node):
                 action = actions[0]
                 self.get_logger().info('next action: ' + str(action) + ', curr ob_id: '+ str(ob_id)+ \
                                         ', current pose' + str(self.model.PoseMemory.get_odom()[:2])+ 'qs' + str(self.model.qs[0].round(3)) + ' qpi '+ str(data['qpi'][0])+ ' efe '+ str(data['efe'][0]))
-                
-                
+
+                # Visualize MCTS rewards if visualizer is enabled
+                if self.mcts_visualizer is not None and data is not None and 'plot_MCTS_tree' in data and data['plot_MCTS_tree'] is not None:
+                    self.mcts_visualizer.publish_mcts_rewards(data['plot_MCTS_tree'], top_k=5)
+                    self.get_logger().info('Published MCTS reward visualization to RViz')
+
+
             ##compare current odom to desired orientation/pose to go and determine the pose to reach
             pose_goal, next_pose_id = self.model.determine_next_pose(action)
             if next_pose_id == -1 :
@@ -312,7 +344,7 @@ class HighLevelNav_ROSInterface(Node):
                 self.model.update_B_given_unreachable_pose(pose_goal, action)
                 
                 save_failed_step_data(copy.deepcopy(self.model), None, np.array([0,0]), [0], list(possible_actions.keys()), \
-                 [0], self.gt_odom, action_success=False, elapsed_time=elapsed_time, store_path=self.store_dir, action_select_data=data)
+                 [0], self.gt_odom, action_success=False, elapsed_time=elapsed_time, store_path=self.store_dir, action_select_data=data, map_msg=self.latest_map)
                 # self.save_model()
                 possible_actions = {key:val for key, val in possible_actions.items() if key != action} #We remove tried action from list
                 self.model.PoseMemory.reset_odom(current_pose) #We reset believed odom to previous state
@@ -369,7 +401,8 @@ def save_data_process(highlevelnav:object, ob_id:int, ob_match_score:list,\
     highlevelnav.save_model()
     save_step_data(highlevelnav.model, ob_id, ob, ob_match_score, obstacle_dist_per_actions,\
                 highlevelnav.gt_odom, action_success=True, elapsed_time=elapsed_time,\
-                      store_path=store_dir, action_select_data=data, execution_time = highlevelnav.execution_time )
+                      store_path=store_dir, action_select_data=data, execution_time = highlevelnav.execution_time,\
+                      map_msg=highlevelnav.latest_map)
     if data is not None and 'poses_efe' in data:
         save_efe_plot(data['poses_efe'],highlevelnav.get_current_timestep(),store_dir)
 
