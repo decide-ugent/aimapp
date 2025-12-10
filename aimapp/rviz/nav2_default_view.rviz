@@ -5,10 +5,10 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
-        - /TF1
         - /TF1/Frames1
         - /TF1/Tree1
         - /Marker1/Topic1
+        - /MarkerArray4
       Splitter Ratio: 0.5833333134651184
     Tree Height: 390
   - Class: rviz_common/Selection
@@ -647,7 +647,8 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        {}
+        nodes: true
+        state_labels: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -659,7 +660,7 @@ Visualization Manager:
       Enabled: true
       Name: Marker
       Namespaces:
-        {}
+        "": true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -700,13 +701,26 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        {}
+        nodes: true
+        state_labels: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /visitable_nodes
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /mcts_reward_visualization
       Value: true
   Enabled: true
   Global Options:
@@ -745,7 +759,7 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: -11.000032424926758
+      Angle: -11.020030975341797
       Class: rviz_default_plugins/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
@@ -755,11 +769,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 247.79446411132812
+      Scale: 74.89793395996094
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz_default_plugins)
-      X: 0.17820900678634644
-      Y: 0.0808759406208992
+      X: -0.39316752552986145
+      Y: 1.0874919891357422
     Saved: ~
 Window Geometry:
   Displays:
