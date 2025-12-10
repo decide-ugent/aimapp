@@ -78,11 +78,13 @@ import os
 import sys
 
 test_id = '$TEST_ID'
+start_node_id = $START_NODE_ID
 test_dir = os.path.join('tests', test_id)
 
 # Print debug info to stderr so it doesn't interfere with coordinate output
 print(f'DEBUG: Current directory: {os.getcwd()}', file=sys.stderr)
 print(f'DEBUG: Looking for test directory: {test_dir}', file=sys.stderr)
+print(f'DEBUG: start_node_id = {start_node_id}', file=sys.stderr)
 
 if not os.path.exists(test_dir):
     print(f'ERROR: Test directory not found: {test_dir}', file=sys.stderr)
@@ -102,14 +104,24 @@ try:
 
     print('DEBUG: Model loaded successfully', file=sys.stderr)
 
-    if hasattr(model, 'current_pose'):
-        pose = model.current_pose
-        print(f'DEBUG: Found current_pose: {pose}', file=sys.stderr)
-        # Output only the coordinates to stdout (this gets captured)
-        print(f'{pose[0]} {pose[1]}')
+    # If start_node_id is specified (>= 0), use pose from that node
+    if start_node_id >= 0:
+        if hasattr(model, 'PoseMemory') and hasattr(model.PoseMemory, 'id_to_pose'):
+            pose = model.PoseMemory.id_to_pose(start_node_id)
+            print(f'DEBUG: Using pose from node {start_node_id}: {pose}', file=sys.stderr)
+            print(f'{pose[0]} {pose[1]}')
+        else:
+            print('ERROR: model.PoseMemory.id_to_pose not found', file=sys.stderr)
+            sys.exit(1)
     else:
-        print('ERROR: model.current_pose attribute not found', file=sys.stderr)
-        sys.exit(1)
+        # Use current_pose if no start_node_id specified
+        if hasattr(model, 'current_pose'):
+            pose = model.current_pose
+            print(f'DEBUG: Using model.current_pose: {pose}', file=sys.stderr)
+            print(f'{pose[0]} {pose[1]}')
+        else:
+            print('ERROR: model.current_pose attribute not found', file=sys.stderr)
+            sys.exit(1)
 except Exception as e:
     print(f'ERROR: Failed to load model: {e}', file=sys.stderr)
     sys.exit(1)

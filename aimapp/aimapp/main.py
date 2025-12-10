@@ -344,7 +344,7 @@ class HighLevelNav_ROSInterface(Node):
                 self.model.update_B_given_unreachable_pose(pose_goal, action)
                 
                 save_failed_step_data(copy.deepcopy(self.model), None, np.array([0,0]), [0], list(possible_actions.keys()), \
-                 [0], self.gt_odom, action_success=False, elapsed_time=elapsed_time, store_path=self.store_dir, action_select_data=data, map_msg=self.latest_map)
+                 [0], self.gt_odom, action_success=False, elapsed_time=elapsed_time, store_path=self.store_dir, action_select_data=data)
                 # self.save_model()
                 possible_actions = {key:val for key, val in possible_actions.items() if key != action} #We remove tried action from list
                 self.model.PoseMemory.reset_odom(current_pose) #We reset believed odom to previous state
