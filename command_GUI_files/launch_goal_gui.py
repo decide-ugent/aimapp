@@ -9,12 +9,35 @@ from tkinter import ttk, messagebox
 import subprocess
 import os
 import sys
+import logging
+import signal
+import threading
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Add path to aimapp module (but don't import Gemini yet - lazy load)
+sys.path.insert(0, os.path.join(os.getcwd(), 'src/aimapp/aimapp'))
+
+# Global flag for interrupt handling
+interrupted = False
+
+def signal_handler(sig, frame):
+    """Handle Ctrl-C gracefully"""
+    global interrupted
+    if not interrupted:  # Only log once
+        interrupted = True
+        logging.info("Interrupt received (Ctrl-C), stopping...")
+    # The periodic check_interrupt() function in main() will handle the exit
+
+# Register signal handler
+signal.signal(signal.SIGINT, signal_handler)
 
 class GoalReachingGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("AIMAPP Goal Reaching Launcher")
-        self.root.geometry("750x700")
+        self.root.geometry("750x750")
         self.root.resizable(True, True)
 
         # Set up the UI
@@ -54,9 +77,31 @@ class GoalReachingGUI:
         )
         goal_frame.grid(row=2, column=0, columnspan=2, pady=(0, 15), sticky=(tk.W, tk.E))
 
+        # Objective text field (for Gemini)
+        objective_frame = ttk.Frame(goal_frame)
+        objective_frame.grid(row=0, column=0, pady=(0, 10), sticky=tk.W)
+        ttk.Label(
+            objective_frame,
+            text="Objective (text):",
+            font=("Arial", 9, "bold")
+        ).grid(row=0, column=0, padx=(0, 10))
+        self.objective_var = tk.StringVar(value="")
+        objective_entry = ttk.Entry(
+            objective_frame,
+            textvariable=self.objective_var,
+            width=30
+        )
+        objective_entry.grid(row=0, column=1)
+        ttk.Label(
+            objective_frame,
+            text="(e.g., 'radiator', 'door')",
+            font=("Arial", 8),
+            foreground="gray"
+        ).grid(row=0, column=2, padx=(10, 0))
+
         # Goal observation ID
         goal_ob_frame = ttk.Frame(goal_frame)
-        goal_ob_frame.grid(row=0, column=0, pady=(0, 10), sticky=tk.W)
+        goal_ob_frame.grid(row=1, column=0, pady=(0, 10), sticky=tk.W)
         ttk.Label(
             goal_ob_frame,
             text="Goal Observation ID:",
@@ -70,14 +115,14 @@ class GoalReachingGUI:
         ).grid(row=0, column=1)
         ttk.Label(
             goal_ob_frame,
-            text="(-1 = not specified)",
+            text="(-1 = use objective text)",
             font=("Arial", 8),
             foreground="gray"
         ).grid(row=0, column=2, padx=(10, 0))
 
         # Goal pose ID
         goal_pose_frame = ttk.Frame(goal_frame)
-        goal_pose_frame.grid(row=1, column=0, pady=(0, 10), sticky=tk.W)
+        goal_pose_frame.grid(row=2, column=0, pady=(0, 10), sticky=tk.W)
         ttk.Label(
             goal_pose_frame,
             text="Goal Pose ID:",
@@ -98,10 +143,10 @@ class GoalReachingGUI:
 
         # Test ID input
         test_id_frame = ttk.Frame(goal_frame)
-        test_id_frame.grid(row=2, column=0, pady=(5, 0), sticky=tk.W)
+        test_id_frame.grid(row=3, column=0, pady=(5, 0), sticky=tk.W)
         ttk.Label(
             test_id_frame,
-            text="Test ID (preferred):",
+            text="Test ID (required):",
             font=("Arial", 9, "bold")
         ).grid(row=0, column=0, padx=(0, 10))
         self.test_id_var = tk.StringVar(value="")
@@ -119,7 +164,7 @@ class GoalReachingGUI:
 
         # Starting node ID input
         start_node_frame = ttk.Frame(goal_frame)
-        start_node_frame.grid(row=3, column=0, pady=(5, 0), sticky=tk.W)
+        start_node_frame.grid(row=4, column=0, pady=(5, 0), sticky=tk.W)
         ttk.Label(
             start_node_frame,
             text="Starting Node ID:",
@@ -232,7 +277,7 @@ class GoalReachingGUI:
         exit_btn = ttk.Button(
             button_frame,
             text="Exit",
-            command=self.root.quit,
+            command=self.exit_application,
             width=25
         )
         exit_btn.grid(row=0, column=2, padx=5)
@@ -250,6 +295,7 @@ class GoalReachingGUI:
         mode = self.mode_var.get()
 
         # Get goal parameters
+        objective = self.objective_var.get().strip()
         goal_ob_id = self.goal_ob_var.get().strip()
         goal_pose_id = self.goal_pose_var.get().strip()
         start_node_id = self.start_node_var.get().strip()
@@ -263,6 +309,103 @@ class GoalReachingGUI:
                 "Please enter an existing test ID to load the model."
             )
             return
+
+        # If objective text is provided and goal_ob_id is -1, use Gemini to find goal
+        if objective and goal_ob_id == "-1":
+            global interrupted, current_thread
+
+            self.status_label.config(
+                text="Loading Gemini AI module... (Press Ctrl-C to cancel)",
+                foreground="blue"
+            )
+            self.root.update()
+
+            # Result container for thread
+            result_container = {'goal_ob_int': None, 'error': None, 'done': False}
+
+            def run_gemini():
+                """Run Gemini in a separate thread"""
+                try:
+                    # Lazy import
+                    from aimapp.obs_transf.gemini_determine_goal_image import get_goal_ob_from_model_and_gemini
+                    # Call Gemini
+                    result_container['goal_ob_int'] = get_goal_ob_from_model_and_gemini(test_id, objective, logging=logging)
+                except Exception as e:
+                    result_container['error'] = e
+                finally:
+                    result_container['done'] = True
+
+            # Start Gemini in background thread
+            gemini_thread = threading.Thread(target=run_gemini, daemon=True)
+            current_thread = gemini_thread
+            gemini_thread.start()
+
+            self.status_label.config(
+                text="Calling Gemini to determine goal observation... (Press Ctrl-C to cancel)",
+                foreground="blue"
+            )
+
+            # Wait for thread with periodic checks using after() instead of blocking sleep
+            def check_gemini_done():
+                if interrupted:
+                    logging.info("Operation cancelled by user - thread will be abandoned")
+                    self.status_label.config(text="Cancelled", foreground="gray")
+                    return
+
+                if not result_container['done']:
+                    # Not done yet, check again in 50ms
+                    self.root.after(50, check_gemini_done)
+                else:
+                    # Done! Process the result
+                    self.handle_gemini_result(result_container, goal_ob_id, objective)
+
+            # Start checking
+            check_gemini_done()
+            return  # Return immediately to keep GUI responsive
+        else:
+            # No Gemini needed, proceed directly
+            self.continue_launch(goal_ob_id)
+
+    def handle_gemini_result(self, result_container, original_goal_ob_id, objective):
+        """Handle the Gemini result after thread completes"""
+        global interrupted
+
+        # Check if we were interrupted during the final update
+        if interrupted:
+            logging.info("Operation cancelled by user")
+            self.status_label.config(text="Cancelled", foreground="gray")
+            return
+
+        # Check for errors
+        if result_container['error'] is not None:
+            messagebox.showerror(
+                "Gemini Error",
+                f"Failed to determine goal from objective:\n{str(result_container['error'])}\n\n"
+                f"Please enter a goal observation ID manually."
+            )
+            self.status_label.config(
+                text="Gemini call failed",
+                foreground="red"
+            )
+            return
+
+        goal_ob_id = str(result_container['goal_ob_int'])
+
+        messagebox.showinfo(
+            "Gemini Result",
+            f"Gemini found goal observation ID: {goal_ob_id}\n"
+            f"for objective: '{objective}'"
+        )
+
+        # Continue with the rest of the launch process
+        self.continue_launch(goal_ob_id)
+
+    def continue_launch(self, goal_ob_id):
+        """Continue the launch process after Gemini completes or is skipped"""
+        goal_pose_id = self.goal_pose_var.get().strip()
+        start_node_id = self.start_node_var.get().strip()
+        test_id = self.test_id_var.get().strip()
+        mode = self.mode_var.get()
 
         # Validate goal IDs and start node ID are integers
         try:
@@ -284,7 +427,7 @@ class GoalReachingGUI:
             messagebox.showwarning(
                 "No Goal Specified",
                 "At least one goal (observation or pose) must be specified.\n"
-                "Please enter a valid goal ID (>= 0)."
+                "Please enter a valid goal ID (>= 0) or an objective text."
             )
             return
 
@@ -363,6 +506,13 @@ class GoalReachingGUI:
                 foreground="red"
             )
 
+    def exit_application(self):
+        """Exit the application immediately"""
+        global interrupted
+        interrupted = True
+        logging.info("Exit button pressed, terminating...")
+        os._exit(0)
+
     def back_to_main(self):
         """Go back to main menu"""
         main_script = os.path.join(self.script_dir, "GUI_main.py")
@@ -382,6 +532,16 @@ class GoalReachingGUI:
 def main():
     root = tk.Tk()
     app = GoalReachingGUI(root)
+
+    # Use a periodic callback to make the event loop interruptible
+    def check_interrupt():
+        global interrupted
+        if interrupted:
+            root.quit()
+            os._exit(1)
+        root.after(100, check_interrupt)  # Check every 100ms
+
+    check_interrupt()  # Start the checking loop
     root.mainloop()
 
 if __name__ == "__main__":
