@@ -9,6 +9,7 @@ from geometry_msgs.msg import Point
 import time
 from cv_bridge import CvBridge
 import cv2
+from pathlib import Path
 from aimapp.motion.potential_field_client import PFClient
 from aimapp.motion.move_straight_client import MSClient
 from aimapp.motion.nav2_client import Nav2Client
@@ -372,6 +373,22 @@ def save_data_process(highlevelnav:object, ob_id:int, ob_match_score:list,\
     if data is not None and 'poses_efe' in data:
         save_efe_plot(data['poses_efe'],highlevelnav.get_current_timestep(),store_dir)
 
+def get_data_dir(start_folder:str=None, test_id:str=None):
+    """Get test directory from test_id (same logic as action_process_no_motion.py)"""
+    if start_folder is None:
+        start_folder = Path.cwd()
+    else:
+        start_folder = Path(start_folder)
+    if test_id is None:
+        test_id = 0
+        while os.path.isdir(start_folder / 'tests' / str(test_id)):
+            test_id += 1
+        store_path = start_folder / 'tests' / str(test_id - 1)
+    else:
+        store_path = start_folder / 'tests' / str(test_id)
+
+    return str(store_path)
+
 def process_path(goal_path: str):
     """ extract image from goal path"""
     # Check if the path exists and is a file
@@ -383,7 +400,7 @@ def process_path(goal_path: str):
         return None
 
     image = cv2.imread(goal_path)
-    
+
     if image is None:
         print("Failed to load the goal image. Check if the file is a valid image format.")
         return None
@@ -393,7 +410,7 @@ def main(args=None):
     rclpy.init(args=args)
 
     # Parse command line arguments
-    model_dir = 'None'
+    test_id = 'None'
     goal_path = 'None'
     goal_ob_id = -1
     goal_pose_id = -1
@@ -405,8 +422,8 @@ def main(args=None):
     # Parse arguments (format: -arg_name value)
     i = 1
     while i < len(sys.argv):
-        if sys.argv[i] == '-model_dir' and i + 1 < len(sys.argv):
-            model_dir = sys.argv[i + 1]
+        if sys.argv[i] == '-test_id' and i + 1 < len(sys.argv):
+            test_id = sys.argv[i + 1]
             i += 2
         elif sys.argv[i] == '-goal_path' and i + 1 < len(sys.argv):
             goal_path = sys.argv[i + 1]
@@ -431,6 +448,9 @@ def main(args=None):
             i += 2
         else:
             i += 1
+
+    # Convert test_id to model_dir
+    model_dir = get_data_dir(None, test_id) if test_id != 'None' else 'None'
 
     highlevelnav = HighLevelNav_ROSInterface(model_dir, goal_path, goal_ob_id, goal_pose_id, start_node_id, influence_radius, n_actions, lookahead_node_creation)
    
