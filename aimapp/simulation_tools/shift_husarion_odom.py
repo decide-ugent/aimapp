@@ -48,8 +48,8 @@ class OdomShiftNode(Node):
         shifted_msg.pose = msg.pose
         shifted_msg.twist = msg.twist
 
-        self.shift[0] = shifted_msg.pose.pose.position.x - self.sensor_odom[0] 
-        self.shift[1] = shifted_msg.pose.pose.position.y - self.sensor_odom[1]
+        self.shift[0] =- shifted_msg.pose.pose.position.x + self.sensor_odom[0] 
+        self.shift[1] =- shifted_msg.pose.pose.position.y + self.sensor_odom[1]
         self.get_logger().info(f'changing shift to: x={self.shift[0]}, y={self.shift[1]}')
 
 

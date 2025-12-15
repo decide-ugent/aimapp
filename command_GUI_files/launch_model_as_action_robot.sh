@@ -148,10 +148,6 @@ echo "Using odometry shift: x=-$ODOM_X, y=-$ODOM_Y"
 NEG_ODOM_X=$(python3 -c "print(-float('$ODOM_X'))")
 NEG_ODOM_Y=$(python3 -c "print(-float('$ODOM_Y'))")
 
-
-
-
-
 # # # # # Terminal 1: Joy2Twist gamepad controller
 # gnome-terminal --tab --title="Joy2Twist" -- bash -c "
 # ssh -t -X $ROBOT_SSH '
