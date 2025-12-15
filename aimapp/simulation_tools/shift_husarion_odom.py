@@ -2,6 +2,7 @@
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseWithCovarianceStamped
 import sys
 
 class OdomShiftNode(Node):
@@ -25,6 +26,8 @@ class OdomShiftNode(Node):
         self.sensor_odom = [0.0, 0.0]  # Initialize sensor odometry position
         self.pub = self.create_publisher(Odometry, '/odometry/shifted', 10)
 
+        self.pub_ekf = self.create_publisher(PoseWithCovarianceStamped, '/set_pose', 10) #This is EKF reset
+
         self.get_logger().info(f'OdomShiftNode initialized with shift: x={shift_x}, y={shift_y}')
 
     def odom_callback(self, msg: Odometry):
@@ -40,6 +43,16 @@ class OdomShiftNode(Node):
         shifted_msg.pose.pose.position.y -= self.shift[1]
 
         self.pub.publish(shifted_msg)
+
+        #reset ekf pose as well, to view the TF frame correctly aligned (Want to test)
+        ekf_odom = PoseWithCovarianceStamped()
+        ekf_odom.header = msg.header
+        ekf_odom.header.frame_id = 'odom'
+        ekf_odom.pose = shifted_msg.pose
+        self.pub_ekf.publish(ekf_odom)
+
+        self.shift[0] = 0  #since we reset EKf, the shift must be nullified.
+        self.shift[1] = 0
 
     def shift_callback(self, msg: Odometry):
         shifted_msg = Odometry()
@@ -72,3 +85,22 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
+
+ ros2 topic pub --once /set_pose geometry_msgs/msg/PoseWithCovarianceStamped \"{
+          header: {
+            stamp: {sec: 0, nanosec: 0},
+            frame_id: 'odom'
+          },
+          pose: {
+            pose: {
+              position: {x: $ODOM_X, y: $ODOM_Y, z: 0.0},
+              orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+            },
+            covariance: [0.1, 0.0, 0.0, 0.0, 0.0, 0.0,
+                         0.0, 0.1, 0.0, 0.0, 0.0, 0.0,
+                         0.0, 0.0, 0.1, 0.0, 0.0, 0.0,
+                         0.0, 0.0, 0.0, 0.1, 0.0, 0.0,
+                         0.0, 0.0, 0.0, 0.0, 0.1, 0.0,
+                         0.0, 0.0, 0.0, 0.0, 0.0, 0.1]
+          }
