@@ -19,6 +19,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/PotentialField.action"
   "action/MoveStraight.action"
   "action/AIFProcess.action"
+  "msg/NewState.msg"
   "msg/NavigationResult.msg"
   DEPENDENCIES std_msgs geometry_msgs sensor_msgs builtin_interfaces action_msgs
 )
