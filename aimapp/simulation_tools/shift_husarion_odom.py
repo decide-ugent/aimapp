@@ -85,22 +85,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-
-
- ros2 topic pub --once /set_pose geometry_msgs/msg/PoseWithCovarianceStamped \"{
-          header: {
-            stamp: {sec: 0, nanosec: 0},
-            frame_id: 'odom'
-          },
-          pose: {
-            pose: {
-              position: {x: $ODOM_X, y: $ODOM_Y, z: 0.0},
-              orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
-            },
-            covariance: [0.1, 0.0, 0.0, 0.0, 0.0, 0.0,
-                         0.0, 0.1, 0.0, 0.0, 0.0, 0.0,
-                         0.0, 0.0, 0.1, 0.0, 0.0, 0.0,
-                         0.0, 0.0, 0.0, 0.1, 0.0, 0.0,
-                         0.0, 0.0, 0.0, 0.0, 0.1, 0.0,
-                         0.0, 0.0, 0.0, 0.0, 0.0, 0.1]
-          }

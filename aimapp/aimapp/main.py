@@ -120,7 +120,7 @@ class HighLevelNav_ROSInterface(Node):
         """ With first panorama.
           We setup the model and incorporates the first ghost nodes
         """
-        self.Views = ViewMemory(matching_threshold=0.7) #not in model because i can't pickle it
+        self.Views = ViewMemory(matching_threshold=0.6) #not in model because i can't pickle it
         
         if self.model_dir == 'None':
             obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(n_actions)

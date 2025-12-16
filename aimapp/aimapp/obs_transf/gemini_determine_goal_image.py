@@ -17,9 +17,9 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Suppress verbose logging from Google SDK
-# logging.getLogger('google').setLevel(logging.WARNING)
-# logging.getLogger('google.auth').setLevel(logging.WARNING)
-# logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('google').setLevel(logging.WARNING)
+logging.getLogger('google.auth').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
 
 class BoundingBox(BaseModel):
     """Bounding box coordinates and dimensions."""
@@ -477,11 +477,6 @@ def get_goal_ob_from_model_and_gemini(test_id:str, objective:str, logging=None):
         logging.info(f'retrieving model from {model_dir}')
 
     goal_image = determine_observation_objective(model_dir, objective, confidence_threshold=0.7, logging=logging)
-    
-    for i in range(20):
-        time.sleep(0.1)
-        print('TEST',i)
-
 
     if logging is not None:
         logging.info(f'returned goal_image {goal_image}')

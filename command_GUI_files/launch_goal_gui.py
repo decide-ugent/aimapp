@@ -37,7 +37,7 @@ class GoalReachingGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("AIMAPP Goal Reaching Launcher")
-        self.root.geometry("750x750")
+        self.root.geometry("750x780")
         self.root.resizable(True, True)
 
         # Set up the UI
