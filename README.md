@@ -92,6 +92,70 @@ sudo apt install libgphoto2-6
 
 ## Start the project <a name="Start-the-project"></a>
 
+### GUI Launcher 
+
+The project includes a graphical user interface (GUI) for easy launching of different operational modes. The GUI provides a first interface to configure and launch exploration or goal-reaching tests. Only the main parameters are given as variables but it is faster.
+
+#### Available GUI Modes
+
+**Main GUI Launcher:**
+```bash
+cd /path/to/ros_workspace  # Important: Launch from ROS workspace root
+python3 src/aimapp/command_GUI_files/GUI_main.py
+```
+
+This launches the main menu with two options:
+
+##### 1. Exploration Mode (`launch_exploration_gui.py`)
+Choose between two exploration strategies:
+
+- **Controlled Motion Exploration:**
+  - Action process dissociated from model process
+  - Requires manual goal sending via GUI or terminal
+  - Ideal for environments where obstacles can't be detected by Lidar
+  - Uses `launch_model_as_action_robot.sh`
+  - Includes Action Selector GUI for interactive node selection
+
+- **Fully Autonomous Exploration:**
+  - Complete autonomous exploration without manual intervention
+  - Agent makes all decisions independently
+  - Best for well-defined environments with reliable Lidar coverage
+  - Uses `launch_autonomous_exploration.sh`
+
+**Configurable Parameters:**
+- Test ID (optional): Load existing model from previous test
+- Influence Radius (default: 1.6): Radius of influence of a state
+- Number of Actions (default: 17): Possible action directions
+- Lookahead Node Creation (default: 8): Consecutive states created with Lidar range
+- Skip Double Check: Option to skip re-observation of visited nodes (faster but less robust)
+
+##### 2. Goal Reaching Mode (`launch_goal_gui.py`)
+Navigate to a specific goal observation or pose:
+
+- **Controlled Goal Reaching:**
+  - Manual control mode with user interaction required
+  - Uses `launch_model_as_action_robot.sh` with goal parameters
+
+- **Fully Autonomous Goal Reaching:**
+  - Complete autonomous navigation to goal
+  - Agent makes all decisions independently
+  - Uses `launch_autonomous_exploration.sh` with goal parameters
+
+**Goal Specification Options:**
+- **Objective Text:** Use Gemini AI to find goal from text description (e.g., "radiator", "door")
+- **Goal Observation ID:** Specify the exact observation ID to reach
+- **Goal Pose ID:** Specify the exact pose ID to reach (alternative to observation)
+- **Test ID (required):** Load existing model from previous exploration
+- **Starting Node ID:** Specify where to start (default: -1 = latest node in model)
+
+**Example Usage:**
+1. Run previous exploration (test_id=5) to build a map
+2. Open Goal Reaching GUI
+3. Enter test_id=5 and objective="door"
+4. Select Autonomous mode
+5. Robot navigates autonomously to the door observation
+
+
 ### Robot Usage - Launch Scripts for exploration
 
 For **robot deployment** (ideal in areas where obstacles can't be detected by the Lidar and we have no bumper on the robot -Husarion-). 
