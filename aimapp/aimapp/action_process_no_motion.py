@@ -38,7 +38,7 @@ class AIFProcessServer(Node):
         self.robot_dim = 0.25
         self.model_imagine_next_action = True
 
-        self.policy_length = 2
+        self.policy_length = 1
         self.skip_double_check_visited_state = skip_double_check_visited_state
 
         # Store goal IDs
@@ -639,7 +639,14 @@ class AIFProcessServer(Node):
         self.model.agent_step_update(action, [ob_id, pose_id, obstacle_dist_per_actions], logs=self.get_logger())
         self.execution_time += time.time() - start_time
         return obstacle_dist_per_actions, ob_id, ob_match_score
-
+    
+    def get_state_observation(self):
+        next_pose_id = self.model.get_current_pose_id()
+        ob_id = self.model.state_most_likely_observation(next_pose_id)
+        
+        self.get_logger().info(f'We have node {next_pose_id} with ob_id {ob_id}.')
+        return ob_id
+    
     def get_panorama(self, n_directions:int):
         """ 
         Get panorama, if the image does not generate one, 
