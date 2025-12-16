@@ -260,9 +260,11 @@ class MCTS:
         if plot:
             plot_node = copy.deepcopy(current_node)
             data['plot_MCTS_tree'] = plot_node
-        if logging:
-            logging.info(f"MCTS:Executing actions {best_actions} -> Transitioning up to Node {current_node.childs[best_action].id}")
-           
+        if logging and num_steps == 1:
+            logging.info(f"MCTS:Executing actions {best_actions} -> Transitioning up to Node {current_node.childs[best_actions[0]].id}")
+        elif logging:
+            logging.info(f"MCTS:Executing actions {best_actions} -> Transitioning all the way up to Node {next_node.id}")
+
         return best_actions, data
 
     def _select_node(self, root_node:object, logging=None)->object:
@@ -601,7 +603,7 @@ class MCTS:
             available_actions.append(action)
             child_info.append(f"Action {action}: AvgR={avg_reward:.3f}, N={child.N}")
         if logging:
-            logging.info(f"Root node children stats: {'; '.join(child_info)}")
+            logging.debug(f"Root node children stats: {'; '.join(child_info)}")
 
         if len(available_actions)==0:
              logging.warning("No valid actions available from root node children.")
@@ -609,9 +611,9 @@ class MCTS:
 
         q_pi, best_action_id = self.model_interface.infer_policy_over_actions(action_values, available_actions)
         if logging:
-            logging.info(f"action average G: {action_values}")
-            logging.info(f"softmax policies: {q_pi.round(2)}")
-            logging.info(f"Selected best action based on policy: {best_action_id}")
+            logging.debug(f"action average G: {action_values}")
+            logging.debug(f"softmax policies: {q_pi.round(2)}")
+            logging.debug(f"Selected best action based on policy: {best_action_id}")
         
         # Ensure the selected action is actually one of the children
         if best_action_id not in root_node.childs:

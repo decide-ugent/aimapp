@@ -183,6 +183,22 @@ class GoalReachingGUI:
             foreground="gray"
         ).grid(row=0, column=2, padx=(10, 0))
 
+        # Skip double check checkbox
+        skip_check_frame = ttk.Frame(goal_frame)
+        skip_check_frame.grid(row=5, column=0, pady=(10, 0), sticky=tk.W)
+        self.skip_double_check_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            skip_check_frame,
+            text="No double observation check (for those who don't have time)",
+            variable=self.skip_double_check_var
+        ).grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(
+            skip_check_frame,
+            text="- Less robust to change and drift -",
+            font=("Arial", 8, "italic"),
+            foreground="red"
+        ).grid(row=1, column=0, sticky=tk.W, padx=(25, 0))
+
         # Mode selection variable
         self.mode_var = tk.StringVar(value="controlled")
 
@@ -406,6 +422,7 @@ class GoalReachingGUI:
         start_node_id = self.start_node_var.get().strip()
         test_id = self.test_id_var.get().strip()
         mode = self.mode_var.get()
+        skip_double_check = 'true' if self.skip_double_check_var.get() else 'false'
 
         # Validate goal IDs and start node ID are integers
         try:
@@ -476,10 +493,10 @@ class GoalReachingGUI:
             os.chmod(script_path, 0o755)
 
             # Launch the script from ROS workspace directory
-            # Pass: test_id goal_ob_id goal_pose_id start_node_id influence_radius n_actions lookahead_node_creation
-            # Using default values for model parameters (can be made configurable later)
+            # Pass: test_id goal_ob_id goal_pose_id start_node_id influence_radius n_actions lookahead_node_creation skip_double_check
+            # Use default values for model parameters (same as in main.py)
             subprocess.Popen(['bash', script_path, test_id, goal_ob_id, goal_pose_id, start_node_id,
-                            '1.6', '17', '8'],
+                            '1.6', '17', '8', skip_double_check],
                            cwd=self.ros_ws_dir)
 
             # Update status

@@ -796,12 +796,14 @@ def generate_failed_step_save_dir(n_steps: int, store_path:Path=None):
 
 def save_step_data(model:object,ob_id:int, ob:np.ndarray, ob_match_score:list, scan_dist:list, gt_odom:list, action_success:bool, elapsed_time:int,
                  store_path:Path=None, action_select_data:dict=None, execution_time:float=np.nan, map_msg=None)-> None:
-
-    next_possible_actions = model.define_next_possible_actions(scan_dist)
+    next_possible_actions = []
+    if scan_dist is not None:
+        next_possible_actions = model.define_next_possible_actions(scan_dist)
     next_possible_nodes = {}
     for a in next_possible_actions:
         next_pose, next_pose_id = model.determine_next_pose(a)
         next_possible_nodes[next_pose_id] = next_pose
+
     n_steps = save_data_to_excel(model, ob_id, ob, ob_match_score, next_possible_actions,
                        scan_dist,gt_odom, action_success, elapsed_time, store_path,action_select_data, execution_time, next_possible_nodes)
 
@@ -1049,7 +1051,10 @@ def process_data(model:object, ob_id:int, ob:np.ndarray, ob_match_score:list, po
         action = model.action[0]
     data['applied_action'] = action
     # data['state_mapping'] = model.get_agent_state_mapping()
-    data['scan_dist'] = list(scan_dist)
+    if scan_dist is not None:
+        data['scan_dist'] = list(scan_dist)
+    else: 
+        data['scan_dist'] = None
     data['ob_shape'] = ob.shape
     # data['B matrix'] = str(model.get_B()) #else if B too big i lose info
     # data['A ob matrix'] = A[0]

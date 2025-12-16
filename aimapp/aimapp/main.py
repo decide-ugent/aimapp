@@ -11,15 +11,16 @@ import time
 from cv_bridge import CvBridge
 import cv2
 from pathlib import Path
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from aimapp.motion.potential_field_client import PFClient
 from aimapp.motion.move_straight_client import MSClient
 from aimapp.motion.nav2_client import Nav2Client
-from aimapp.obs_transf.get_pano_multiple_camera_client import PanoramaMultipleCamClient
 from aimapp.obs_transf.get_360_camera_client import Panorama360CamClient
 from aimapp.obs_transf.observation_match import ViewMemory
 from aimapp.model.V5 import Ours_V5_RW
 from aimapp.mcts_reward_visualiser import MCTSRewardVisualiser
 
+from aimapp_actions.msg import NewState
 #visualisations
 from aimapp.visualisation_tools import create_save_data_dir, save_failed_step_data, remove_white_border,\
                                                     save_step_data, save_efe_plot,pickle_load_model, pickle_dump_model, save_pose_data
@@ -28,7 +29,7 @@ os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 class HighLevelNav_ROSInterface(Node):
 
-    def __init__(self, model_dir, goal_path, goal_ob_id=-1, goal_pose_id=-1, start_node_id=-1, influence_radius=1.6, n_actions=17, lookahead_node_creation=8):
+    def __init__(self, model_dir, goal_path, goal_ob_id=-1, goal_pose_id=-1, start_node_id=-1, influence_radius=1.6, n_actions=17, lookahead_node_creation=8, skip_double_check_visited_state=False):
         super().__init__('HighLevelNav_model')
         self.get_logger().info('HighLevelNav_model node has been started.')
 
@@ -36,6 +37,8 @@ class HighLevelNav_ROSInterface(Node):
         self.goal_path = goal_path
         self.goal_id = [goal_ob_id, goal_pose_id]
         self.start_node_id = start_node_id
+        self.policy_length = 1
+        self.skip_double_check_visited_state = skip_double_check_visited_state  # Skip re-checking observations for already visited nodes in policy execution
 
         #dist motion in m
         self.influence_radius = influence_radius
@@ -73,15 +76,24 @@ class HighLevelNav_ROSInterface(Node):
             msg_type=Point,
             topic="/shifted_odom",
             qos_profile=5)
+        self.add_new_pose, self.connect_to_states, self.added_node_influence_radius = None, None, None
+        latest_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+        self.check_new_node = self.create_subscription(
+           NewState,
+           "/new_state", 
+           self.new_state_callback, 
+           latest_qos)
 
-        # Subscribe to map topic
         self.map_sub = self.create_subscription(
             OccupancyGrid,
             '/map',
             self.map_callback,
             5)
-
-
+        
     #==== VISUALISATION CALLBACK ====#
 
     def map_callback(self, msg):
@@ -93,6 +105,14 @@ class HighLevelNav_ROSInterface(Node):
     def save_model(self):
         ''' create map, transform to cv2, transform to ros msg, publish'''
         pickle_dump_model(self.model)
+
+    def new_state_callback(self, msg):
+        self.get_logger().info(f"pose:{msg.pose}, connecting states:{msg.connecting_states}")
+        self.add_new_pose = list(msg.pose)
+        self.connect_to_states= list(msg.connecting_states) 
+        self.added_node_influence_radius = float(msg.influence_radius)
+        
+        #self.get_logger().info(f"pose detail{len(msg.pose)}, {type(msg.pose)},{type(msg.pose[0])} {list(msg.pose)}")
 
     #==== INITIALISATION METHODS ====#
 
@@ -137,15 +157,19 @@ class HighLevelNav_ROSInterface(Node):
                 self.model.reset(start_pose)
 
                 # Update self.qs with node_id - all zeros except at start_node_id index
-                import aimapp.model.pymdp.utils as utils
-                self.model.qs = utils.obj_array_uniform(self.model.num_states)
-                for i in range(len(self.model.qs)):
-                    self.model.qs[i] = np.zeros(len(self.model.qs[i]))
-                self.model.qs[0][self.start_node_id] = 1.0  # Set belief at start_node_id for pose state
-
+                qs = [np.zeros(self.model.num_states)]
+                qs[0][self.start_node_id] = 1.0  # Set belief at start_node_id for pose state
+                self.model.qs = qs
                 self.get_logger().info(f'Model reset to start node {self.start_node_id} at pose {start_pose}')
-
-            obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(n_actions)
+            
+            ob_id = None
+            if self.skip_double_check_visited_state:
+                ob_id = self.get_state_observation()
+                obstacle_dist_per_actions = None
+                ob_match_score = []
+            #If we have no observation, get one.
+            if ob_id is None:
+                obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(n_actions)
             self.get_logger().info('start POSE: ' + str(self.model.PoseMemory.get_odom())+', '+str(self.model.current_pose))
 
             #self.model.reset()
@@ -225,7 +249,17 @@ class HighLevelNav_ROSInterface(Node):
         """
         agent_possible_directions = self.model.get_possible_actions()
 
-        obstacle_dist_per_actions,ob_id, ob_match_score = self.get_panorama(len(agent_possible_directions))
+        #basically, the only time we skip get_panorama is when policy_exec_under_way =True and skip_double_check_visited_state = True
+        ob_id = None
+        #If we "STAY" we check the state
+        if self.skip_double_check_visited_state and ('STAY' in agent_possible_directions.keys() and action != agent_possible_directions['STAY']):
+            ob_id = self.get_state_observation()
+            obstacle_dist_per_actions = None
+            ob_match_score = []
+        #If we have no observation, get one.
+        if ob_id is None:
+            obstacle_dist_per_actions,ob_id, ob_match_score = self.get_panorama(len(agent_possible_directions))
+        
         # self.get_logger().warn("---GET PANORAMA %s seconds ---" % round(time.time() - start_time,3))
         #convert lidar scan in "can we go in that direction", considering the model directions
 
@@ -286,31 +320,35 @@ class HighLevelNav_ROSInterface(Node):
         if self.model is not None:
             self.model.set_memory_views(self.Views.get_memory_views())
         return self.panorama_results.pano_scan, ob_id, ob_match_score
+    
+    def get_state_observation(self):
+        next_pose_id = self.model.get_current_pose_id()
+        ob_id = self.model.state_most_likely_observation(next_pose_id)
         
+        self.get_logger().info(f'We have node {next_pose_id} with ob_id {ob_id}.')
+        return ob_id
     #==== MOTIONS METHODS ====#
-    def define_next_objective(self, action:int, ob_id:int=None, obstacle_dist_per_actions:list=None): #-> tuple([int, dict])
+    def define_next_objective(self, actions:list[int], ob_id:int=None, obstacle_dist_per_actions:list=None): #-> tuple([int, dict])
         """ We define the next action and/or determine where we should go and move there.
         If we fail, we can retry a few time, deepending on the number of actions we have, 
         but if even after a few tries we can't reach any goals. We consider the robot stucks """
         data = None
         goal_reached = False
         ongoing_try = 0
-
         
         possible_actions = self.model.define_next_possible_actions(obstacle_dist_per_actions, restrictive=True) #Not mandatory (just to speed up process), 
-        
+
         #could also be possible_actions = self.model.possible_actions.copy()
         possible_actions = {k: self.model.possible_actions[k] for k in possible_actions}
 
         max_try = len(possible_actions)-1
         while not goal_reached and ongoing_try < max_try:
             current_pose = self.model.PoseMemory.get_odom().copy()
-            if action is None:
+            if actions is None:
                 start_time = time.time() #reset start time for next step
-                actions, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[ob_id],next_possible_actions=list(possible_actions.keys()), logging=self.get_logger(), plot_MCTS_tree=True)
+                actions, data = self.model.define_actions_from_MCTS_run(num_steps=self.policy_length, observations=[ob_id],next_possible_actions=list(possible_actions.keys()), logging=self.get_logger(), plot_MCTS_tree=True)
                 self.execution_time += time.time() - start_time
-                action = actions[0]
-                self.get_logger().info('next action: ' + str(action) + ', curr ob_id: '+ str(ob_id)+ \
+                self.get_logger().info('next actions: ' + str(actions) + ', curr ob_id: '+ str(ob_id)+ \
                                         ', current pose' + str(self.model.PoseMemory.get_odom()[:2])+ 'qs' + str(self.model.qs[0].round(3)) + ' qpi '+ str(data['qpi'][0])+ ' efe '+ str(data['efe'][0]))
 
                 # Visualize MCTS rewards if visualizer is enabled
@@ -320,7 +358,7 @@ class HighLevelNav_ROSInterface(Node):
 
 
             ##compare current odom to desired orientation/pose to go and determine the pose to reach
-            pose_goal, next_pose_id = self.model.determine_next_pose(action)
+            pose_goal, next_pose_id = self.model.determine_next_pose(actions[0])
             if next_pose_id == -1 :
                 self.get_logger().error('POSE GOAL ',pose_goal,' is not known by model, IT WILL FAIL')
             pose_goal = self.model.PoseMemory.id_to_pose(next_pose_id) #just to be sure we are aiming as close as possible to known state
@@ -332,7 +370,7 @@ class HighLevelNav_ROSInterface(Node):
      
             self.model.infer_pose(pose_goal)
             self.get_logger().info('step:'+ str(self.model.get_current_timestep()))
-            self.get_logger().info('action: ' + str(action)+ ', pose_goal: ' + str(pose_goal) \
+            self.get_logger().info('next actions: ' + str(actions)+ ', next pose_goal: ' + str(pose_goal) \
                                         + ', odom:'+ str(current_pose))
             #We go to that internally estimated position
             goal_reached, self.gt_odom = self.reach_position(pose_goal)#self.model.PoseMemory.get_odom())
@@ -341,15 +379,15 @@ class HighLevelNav_ROSInterface(Node):
                 self.get_logger().info('returning to previous pose')
                 elapsed_time = int(time.time() - self.start_time)
 
-                self.model.update_B_given_unreachable_pose(pose_goal, action)
+                self.model.update_B_given_unreachable_pose(pose_goal, actions[0])
                 
                 save_failed_step_data(copy.deepcopy(self.model), None, np.array([0,0]), [0], list(possible_actions.keys()), \
                  [0], self.gt_odom, action_success=False, elapsed_time=elapsed_time, store_path=self.store_dir, action_select_data=data)
                 # self.save_model()
-                possible_actions = {key:val for key, val in possible_actions.items() if key != action} #We remove tried action from list
+                possible_actions = {key:val for key, val in possible_actions.items() if key != actions[0]} #We remove tried action from list
                 self.model.PoseMemory.reset_odom(current_pose) #We reset believed odom to previous state
-            
-                action = None #we infer action trhis time
+    
+                actions = None #we infer new action trhis time
                 ongoing_try+=1
                 
                 return_start_pose, self.gt_odom = self.reach_position(self.model.PoseMemory.get_odom())
@@ -358,7 +396,7 @@ class HighLevelNav_ROSInterface(Node):
             self.get_logger().info('pose reached, get panorama')
         else:
             raise ValueError('We could not succeed in reaching a new position in '+ str(max_try)+' tries, robot stucked.')
-        return action, data
+        return actions, data
 
     def reach_position(self,goal_pose:list): #-> tuple([Bool,Odometry])
         goal_reached, pose= self.motion_client.go_to_pose(goal_pose)
@@ -392,6 +430,13 @@ class HighLevelNav_ROSInterface(Node):
             pose = Point(x=current_pose[0], y=current_pose[1])
             self.get_logger().info('certainty about the state at step %s, believed pose: %s' % (str(self.model.get_current_timestep()), str(current_pose)))         
             self.publish_believed_odom.publish(pose)
+        #==== INJECT NODE METHOD ====#
+    def add_new_state_in_model(self):
+        
+        if self.add_new_pose is not None:
+            self.get_logger().warn(f'We received new state to add at pose {self.add_new_pose}, it will be added only once')
+            #In the method we are checking if the pose is new or not, if not new no transition update.
+            self.model.inject_new_node_given_pose_and_linked_states(new_pose = self.add_new_pose, connected_states=self.connect_to_states, influence_radius=self.added_node_influence_radius, logs=self.get_logger())
 
 def save_data_process(highlevelnav:object, ob_id:int, ob_match_score:list,\
                       obstacle_dist_per_actions:list, store_dir, data:dict=None):
@@ -451,6 +496,7 @@ def main(args=None):
     influence_radius = 1.6
     n_actions = 13 # circle / 12 + STAY action
     lookahead_node_creation = 8
+    skip_double_check_visited_state = False
 
     # Parse arguments (format: -arg_name value)
     i = 1
@@ -479,13 +525,26 @@ def main(args=None):
         elif sys.argv[i] == '-lookahead_node_creation' and i + 1 < len(sys.argv):
             lookahead_node_creation = int(sys.argv[i + 1])
             i += 2
+        elif sys.argv[i] == '-skip_double_check' and i + 1 < len(sys.argv):
+            skip_double_check_visited_state = sys.argv[i + 1].lower() == 'true'
+            i += 2
         else:
             i += 1
 
     # Convert test_id to model_dir
     model_dir = get_data_dir(None, test_id) if test_id != 'None' else 'None'
 
-    highlevelnav = HighLevelNav_ROSInterface(model_dir, goal_path, goal_ob_id, goal_pose_id, start_node_id, influence_radius, n_actions, lookahead_node_creation)
+    # If loading a model for goal-reaching and model parameters are -1, load them from the model
+    # if model_dir != 'None' and (influence_radius == -1 or n_actions == -1 or lookahead_node_creation == -1):
+    #     # Temporarily load model to get parameters
+    #     temp_model = pickle_load_model(model_dir)
+    #     if influence_radius == -1 and hasattr(temp_model, 'influence_radius'):
+    #         influence_radius = temp_model.influence_radius
+    #     if lookahead_node_creation == -1 and hasattr(temp_model, 'lookahead_node_creation'):
+    #         lookahead_node_creation = temp_model.lookahead_node_creation
+    #     del temp_model  # Free memory
+
+    highlevelnav = HighLevelNav_ROSInterface(model_dir, goal_path, goal_ob_id, goal_pose_id, start_node_id, influence_radius, n_actions, lookahead_node_creation, skip_double_check_visited_state)
    
     store_dir = create_save_data_dir()
     highlevelnav.store_dir = store_dir
@@ -520,18 +579,34 @@ def main(args=None):
     ** RUN MODEL **
     """
 
-    for action in policy:
+    for id, action in enumerate(policy):
         highlevelnav.execution_time = 0
-        action, action_data = highlevelnav.define_next_objective(action, ob_id, obstacle_dist_per_actions)
-        
+        #To get the subscriber data
+        rclpy.spin_once(highlevelnav, timeout_sec=0.5)
+        highlevelnav.add_new_state_in_model()
+        if action is not None:
+            action = [action]
+    
+        actions, action_data = highlevelnav.define_next_objective(action, ob_id, obstacle_dist_per_actions)
+        #if we requested a policy of more than one action, we add those action to the policy as next step to execute (push previously desired actions).
+        if len(actions) > 1 :
+            for u in reversed(actions[1:]):
+                policy.insert(id+1,u)
+
+        action = actions[0]
         #highlevelnav.get_logger().info('checking the action %f, %s' % (action, str(type(action))))
         #NOTE: UPDATE MODEL INTERNAL ACTION MANUALLY WHEN GIVEN A STATIC POLICY
         if action_data is None:
             highlevelnav.model.set_action_step(action)
         
+        # policy_exec_under_way = False
+        # #If we are not at the end of policy list and there are no next action planned
+        # if id+1 < len(policy) and policy[id+1] is not None:
+        #     policy_exec_under_way = True
+ 
         obstacle_dist_per_actions, ob_id, ob_match_score = highlevelnav.model_step_process(action)
 
-        highlevelnav.get_logger().info('qs: ' +str(highlevelnav.model.get_belief_over_states()[0].round(3)))
+        #highlevelnav.get_logger().info('qs: ' +str(highlevelnav.model.get_belief_over_states()[0].round(3)))
         p_idx = highlevelnav.model.infer_current_most_likely_pose(observations= [ob_id], z_score=10)
         highlevelnav.get_logger().info('POSE: ' +str(highlevelnav.model.PoseMemory.get_odom())+','+str(highlevelnav.model.current_pose) + 'p_idx: ' + str(p_idx))
         

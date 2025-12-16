@@ -180,6 +180,22 @@ class ExplorationLauncherGUI:
             foreground="gray"
         ).grid(row=0, column=2, padx=(10, 0))
 
+        # Skip double check checkbox
+        skip_check_frame = ttk.Frame(params_frame)
+        skip_check_frame.grid(row=3, column=0, pady=(15, 0), sticky=tk.W)
+        self.skip_double_check_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            skip_check_frame,
+            text="No double observation check (for those who don't have time)",
+            variable=self.skip_double_check_var
+        ).grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(
+            skip_check_frame,
+            text="- Less robust to change and drift -",
+            font=("Arial", 8, "italic"),
+            foreground="red"
+        ).grid(row=1, column=0, sticky=tk.W, padx=(25, 0))
+
         # Autonomous Frame
         autonomous_frame = ttk.LabelFrame(
             main_frame,
@@ -250,6 +266,7 @@ class ExplorationLauncherGUI:
         influence_radius = self.influence_radius_var.get().strip()
         n_actions = self.n_actions_var.get().strip()
         lookahead = self.lookahead_var.get().strip()
+        skip_double_check = 'true' if self.skip_double_check_var.get() else 'false'
 
         # Validate parameters
         try:
@@ -276,7 +293,10 @@ class ExplorationLauncherGUI:
         else:
             script_name = "launch_autonomous_exploration.sh"
             mode_name = "Fully Autonomous Exploration"
-            test_id = None
+            # Get test_id for autonomous mode (can continue exploration or start new)
+            test_id = self.test_id_var.get().strip()
+            if not test_id or test_id.lower() == "none":
+                test_id = "None"
 
         script_path = os.path.join(self.script_dir, script_name)
 
@@ -318,15 +338,17 @@ class ExplorationLauncherGUI:
             os.chmod(script_path, 0o755)
 
             # Launch the script from ROS workspace directory
+            # Format: test_id goal_ob_id goal_pose_id start_node_id influence_radius n_actions lookahead_node_creation skip_double_check
+            # For exploration mode, all goals are -1
             if mode == "controlled":
-                # Pass test_id, goal parameters (all -1 for exploration), and model parameters
-                # Format: test_id goal_ob_id goal_pose_id start_node_id influence_radius n_actions lookahead_node_creation
-                subprocess.Popen(['bash', script_path, test_id, '-1', '-1', '-1', influence_radius,  n_actions, lookahead],
+                # Controlled exploration mode
+                subprocess.Popen(['bash', script_path, test_id if test_id else 'None', '-1', '-1', '-1',
+                                influence_radius, n_actions, lookahead, skip_double_check],
                                cwd=self.ros_ws_dir)
             else:
-                # Autonomous mode also needs all 7 parameters (test_id set to None, goals all -1 for exploration)
-                # Format: test_id goal_ob_id goal_pose_id start_node_id influence_radius n_actions lookahead_node_creation
-                subprocess.Popen(['bash', script_path, test_id if test_id else 'None', '-1', '-1', '-1', influence_radius, n_actions, lookahead],
+                # Autonomous exploration mode
+                subprocess.Popen(['bash', script_path, test_id if test_id else 'None', '-1', '-1', '-1',
+                                influence_radius, n_actions, lookahead, skip_double_check],
                                cwd=self.ros_ws_dir)
 
             # Update status

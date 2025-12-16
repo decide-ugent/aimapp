@@ -15,6 +15,8 @@ start_node_id = LaunchConfiguration('start_node_id', default='-1')
 influence_radius = LaunchConfiguration('influence_radius', default='1.6')
 n_actions = LaunchConfiguration('n_actions', default='17')
 lookahead_node_creation = LaunchConfiguration('lookahead_node_creation', default='8')
+skip_double_check_visited_state = LaunchConfiguration('skip_double_check', default='false')
+
 
 def generate_launch_description():
     ld =  LaunchDescription()
@@ -27,7 +29,8 @@ def generate_launch_description():
                       '-start_node_id', start_node_id,
                       '-influence_radius', influence_radius,
                       '-n_actions', n_actions,
-                      '-lookahead_node_creation', lookahead_node_creation]
+                      '-lookahead_node_creation', lookahead_node_creation,
+                      '-skip_double_check', skip_double_check_visited_state]
         )
     panorama_action = Node(
             package='aimapp',
@@ -117,6 +120,13 @@ def generate_launch_description():
         default_value='8',
         description='Lookahead distance for node creation in exploration'
     ))
+    ld.add_action(DeclareLaunchArgument(
+        'skip_double_check_visited_state',
+        default_value='false',
+        description='Skip double observation check for visited states (faster but less robust)'
+    ))
+
+
 
     ld.add_action(agent_node)
     # ld.add_action(panorama_action)

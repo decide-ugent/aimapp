@@ -3,8 +3,8 @@
 # Launch all ROS2 nodes in separate terminals with logging on remote robot
 # Created for aimapp project - AUTONOMOUS MODE (uses main.py via agent_launch.py)
 #
-# Usage: ./launch_autonomous_exploration.sh [test_id] [goal_ob_id] [goal_pose_id] [start_node_id] [influence_radius] [n_actions] [lookahead_node_creation]
-# Example: ./launch_autonomous_exploration.sh 5 10 -1 0 1.6 17 8
+# Usage: ./launch_autonomous_exploration.sh [test_id] [goal_ob_id] [goal_pose_id] [start_node_id] [influence_radius] [n_actions] [lookahead_node_creation] [skip_double_check]
+# Example: ./launch_autonomous_exploration.sh 5 10 -1 0 1.6 17 8 false
 
 # Robot SSH configuration
 ROBOT_USER="husarion"
@@ -20,6 +20,7 @@ START_NODE_ID="${4:--1}"
 INFLUENCE_RADIUS="${5:-1.6}"
 N_ACTIONS="${6:-17}"
 LOOKAHEAD_NODE_CREATION="${7:-8}"
+SKIP_DOUBLE_CHECK="${8:-false}"
 
 # Create log directory
 LOG_DIR="$HOME/aimapp_logs/$(date +%Y%m%d_%H%M%S)"
@@ -31,6 +32,7 @@ echo "Goal Observation ID: $GOAL_OB_ID"
 echo "Goal Pose ID: $GOAL_POSE_ID"
 echo "Starting Node ID: $START_NODE_ID"
 echo "Model Parameters: influence_radius=$INFLUENCE_RADIUS, n_actions=$N_ACTIONS, lookahead_node_creation=$LOOKAHEAD_NODE_CREATION"
+echo "Skip Double Check: $SKIP_DOUBLE_CHECK"
 
 # Check if SSH key-based authentication is set up
 echo "Checking SSH connection..."
@@ -498,8 +500,9 @@ source install/setup.bash
 echo \"Starting AUTONOMOUS agent (main.py) with test_id=$TEST_ID...\"
 echo \"Goal Parameters: goal_ob_id=$GOAL_OB_ID, goal_pose_id=$GOAL_POSE_ID, start_node_id=$START_NODE_ID\"
 echo \"Model Parameters: influence_radius=$INFLUENCE_RADIUS, n_actions=$N_ACTIONS, lookahead=$LOOKAHEAD_NODE_CREATION\"
+echo \"Skip Double Check: $SKIP_DOUBLE_CHECK\"
 echo \"Press Ctrl-C to stop this node\"
-ros2 launch aimapp agent_launch.py test_id:=$TEST_ID goal_ob_id:=$GOAL_OB_ID goal_pose_id:=$GOAL_POSE_ID start_node_id:=$START_NODE_ID influence_radius:=$INFLUENCE_RADIUS n_actions:=$N_ACTIONS lookahead_node_creation:=$LOOKAHEAD_NODE_CREATION 2>&1
+ros2 launch aimapp agent_launch.py test_id:=$TEST_ID goal_ob_id:=$GOAL_OB_ID goal_pose_id:=$GOAL_POSE_ID start_node_id:=$START_NODE_ID influence_radius:=$INFLUENCE_RADIUS n_actions:=$N_ACTIONS lookahead_node_creation:=$LOOKAHEAD_NODE_CREATION skip_double_check:=$SKIP_DOUBLE_CHECK 2>&1
 bash
 '"
 

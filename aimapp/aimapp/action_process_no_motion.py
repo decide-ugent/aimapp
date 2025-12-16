@@ -12,7 +12,6 @@ from geometry_msgs.msg import Point, PoseStamped
 from nav_msgs.msg import Odometry, OccupancyGrid
 # from sensor_msgs.msg import LaserScan
 from cv_bridge import CvBridge
-
 from aimapp.visualisation_tools import pickle_load_model, create_save_data_dir, pickle_dump_model, save_step_data,save_failed_step_data, remove_white_border
 from aimapp_actions.action import AIFProcess  # Custom action
 from aimapp_actions.msg import NavigationResult
@@ -26,7 +25,7 @@ import cv2
 
 class AIFProcessServer(Node):
 
-    def __init__(self, test_id:int='None', goal_ob_id:int=-1, goal_pose_id:int=-1, start_node_id:int=-1, influence_radius:float=1.6, n_actions:int=17, lookahead_node_creation:int=8):
+    def __init__(self, test_id:int='None', goal_ob_id:int=-1, goal_pose_id:int=-1, start_node_id:int=-1, influence_radius:float=1.6, n_actions:int=17, lookahead_node_creation:int=8, skip_double_check_visited_state:bool=False):
         super().__init__('aif_process')
 
         self.model = None
@@ -39,10 +38,13 @@ class AIFProcessServer(Node):
         self.robot_dim = 0.25
         self.model_imagine_next_action = True
 
+        self.policy_length = 2
+        self.skip_double_check_visited_state = skip_double_check_visited_state
+
         # Store goal IDs
         self.goal_id = [goal_ob_id, goal_pose_id]
         self.start_node_id = start_node_id
-
+        #self.get_logger().info(f'test_id {test_id}, goal_ob_id {goal_ob_id}, goal_pose_id {goal_pose_id}, start_node_id {start_node_id}, influence_radius {influence_radius}')
         self.poses = []
         self.img_bridge = CvBridge()
         qos_policy = rclpy.qos.QoSProfile(
@@ -142,6 +144,7 @@ class AIFProcessServer(Node):
             obstacle_dist_per_actions, ob_id, ob_match_score = self.initialise_model(n_actions=self.n_actions)
             self.last_ob_id = ob_id
             self.prev_scans_dist = obstacle_dist_per_actions
+            
 
         else:
             # Load existing model from test_id
@@ -186,7 +189,14 @@ class AIFProcessServer(Node):
 
                 self.get_logger().info(f'Model reset to start node {self.start_node_id} at pose {start_pose}')
 
-            obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(len(self.model.get_possible_actions()))
+            ob_id = None
+            if self.skip_double_check_visited_state:
+                ob_id = self.get_state_observation()
+                obstacle_dist_per_actions = None
+                ob_match_score = []
+            #If we have no observation, get one.
+            if ob_id is None:
+                obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(len(self.model.get_possible_actions()))
             # qs = self.model.get_belief_over_states()
             # qo = self.get_expected_observation(qs)
             # self.last_ob_id = np.argmax(qo[0]) #might be imbricated list. to check
@@ -203,9 +213,9 @@ class AIFProcessServer(Node):
         ideal_next_action = [-1]
         data = None
         if self.model_imagine_next_action :
-            ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[self.last_ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger(),  plot_MCTS_tree=True)
+            ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=self.policy_length, observations=[self.last_ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger(),  plot_MCTS_tree=True)
 
-            self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
+            self.get_logger().info(f'THE IDEAL NEXT MOTION(S) (FOR MCTS):{ideal_next_action}')
 
             # Visualize MCTS rewards if we have the tree data
             if data is not None and 'plot_MCTS_tree' in data and data['plot_MCTS_tree'] is not None:
@@ -496,8 +506,8 @@ class AIFProcessServer(Node):
             possible_actions.remove(goal_action)
 
             if self.model_imagine_next_action:
-                ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[self.last_ob_id],next_possible_actions=possible_actions, save_action_memory = False, logging= self.get_logger(), plot_MCTS_tree=True)
-                self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
+                ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=self.policy_length, observations=[self.last_ob_id],next_possible_actions=possible_actions, save_action_memory = False, logging= self.get_logger(), plot_MCTS_tree=True)
+                self.get_logger().info(f'THE IDEAL NEXT MOTION(S) (FOR MCTS):{ideal_next_action}')
                 next_pose, next_pose_id = self.model.determine_next_pose(ideal_next_action[0])
                 self.pub_goal_pose(next_pose)
 
@@ -538,10 +548,10 @@ class AIFProcessServer(Node):
         ideal_next_action = [-1]
         data = None
         if self.model_imagine_next_action:
-            ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=1, observations=[ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger(), plot_MCTS_tree=True)
+            ideal_next_action, data = self.model.define_actions_from_MCTS_run(num_steps=self.policy_length, observations=[ob_id],next_possible_actions=next_possible_actions, save_action_memory = False, logging= self.get_logger(), plot_MCTS_tree=True)
 
             self.execution_time += time.time() - start_execution_time
-            self.get_logger().info(f'THE IDEAL NEXT MOTION (FOR MCTS):{ideal_next_action}')
+            self.get_logger().info(f'THE IDEAL NEXT MOTION(S) (FOR MCTS):{ideal_next_action}')
 
             # Visualize MCTS rewards after each action
             if self.mcts_visualizer is not None and data is not None and 'plot_MCTS_tree' in data and data['plot_MCTS_tree'] is not None:
@@ -612,7 +622,15 @@ class AIFProcessServer(Node):
     def model_step_process(self, action: int, pose_id:int=None):
         agent_possible_directions = self.model.get_possible_actions()
 
-        obstacle_dist_per_actions, ob_id, ob_match_score = self.get_panorama(len(agent_possible_directions))
+        ob_id = None
+        #If we "STAY" we check the state
+        if self.skip_double_check_visited_state and ('STAY' in agent_possible_directions.keys() and action != agent_possible_directions['STAY']):
+            ob_id = self.get_state_observation()
+            obstacle_dist_per_actions = None
+            ob_match_score = []
+        #If we have no observation, get one.
+        if ob_id is None:
+            obstacle_dist_per_actions,ob_id, ob_match_score = self.get_panorama(len(agent_possible_directions))
 
         start_time = time.time()
         if 'STAY' in agent_possible_directions:
@@ -790,6 +808,7 @@ def main(args=None):
     influence_radius = 1.6
     n_actions = 17
     lookahead_node_creation = 8
+    skip_double_check = False
 
     # Parse arguments (format: -arg_name value)
     i = 1
@@ -815,10 +834,13 @@ def main(args=None):
         elif sys.argv[i] == '-lookahead_node_creation' and i + 1 < len(sys.argv):
             lookahead_node_creation = int(sys.argv[i + 1])
             i += 2
+        elif sys.argv[i] == '-skip_double_check' and i + 1 < len(sys.argv):
+            skip_double_check = sys.argv[i + 1].lower() == 'true'
+            i += 2
         else:
             i += 1
 
-    node = AIFProcessServer(test_id=test_id, goal_ob_id=goal_ob_id, goal_pose_id=goal_pose_id, start_node_id=start_node_id, influence_radius=influence_radius, n_actions=n_actions, lookahead_node_creation=lookahead_node_creation)
+    node = AIFProcessServer(test_id=test_id, goal_ob_id=goal_ob_id, goal_pose_id=goal_pose_id, start_node_id=start_node_id, influence_radius=influence_radius, n_actions=n_actions, lookahead_node_creation=lookahead_node_creation, skip_double_check_visited_state=skip_double_check)
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
