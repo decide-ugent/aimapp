@@ -939,8 +939,8 @@ class Ours_V5_RW(Agent):
             for action in possible_actions_2:
                 next_pose, next_pose_id = self.determine_next_pose(action, min_dist_to_next_node=min_dist)
                 registered_pose = self.PoseMemory.id_to_pose(next_pose_id)
-                if logs:
-                    logs.info(f'next pose{next_pose}{next_pose_id}, with action{action}, but registered_pose{registered_pose}')
+                # if logs:
+                #     logs.info(f'next pose{next_pose}{next_pose_id}, with action{action}, but registered_pose{registered_pose}')
                 if registered_pose[0] != next_pose[0] or registered_pose[1] != next_pose[1] :
                     possible_actions.remove(action)
                     

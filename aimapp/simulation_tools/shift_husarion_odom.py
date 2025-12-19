@@ -39,20 +39,25 @@ class OdomShiftNode(Node):
 
         self.sensor_odom= [shifted_msg.pose.pose.position.x , shifted_msg.pose.pose.position.y]
 
+        # Only reset EKF if there's an actual shift to apply
+        needs_reset = (self.shift[0] != 0.0 or self.shift[1] != 0.0)
+
         shifted_msg.pose.pose.position.x -= self.shift[0]
         shifted_msg.pose.pose.position.y -= self.shift[1]
 
         self.pub.publish(shifted_msg)
 
-        #reset ekf pose as well, to view the TF frame correctly aligned (Want to test)
-        ekf_odom = PoseWithCovarianceStamped()
-        ekf_odom.header = msg.header
-        ekf_odom.header.frame_id = 'odom'
-        ekf_odom.pose = shifted_msg.pose
-        self.pub_ekf.publish(ekf_odom)
+        if needs_reset:
+            #reset ekf pose as well, to view the TF frame correctly aligned (Want to test)
+            ekf_odom = PoseWithCovarianceStamped()
+            ekf_odom.header = msg.header
+            ekf_odom.header.frame_id = 'odom'
+            ekf_odom.pose = shifted_msg.pose
+            self.pub_ekf.publish(ekf_odom)
 
-        self.shift[0] = 0  #since we reset EKf, the shift must be nullified.
-        self.shift[1] = 0
+            self.shift[0] = 0.0  #since we reset EKf, the shift must be nullified.
+            self.shift[1] = 0.0
+            self.get_logger().info('EKF pose reset applied')
 
     def shift_callback(self, msg: Odometry):
         shifted_msg = Odometry()
@@ -61,8 +66,8 @@ class OdomShiftNode(Node):
         shifted_msg.pose = msg.pose
         shifted_msg.twist = msg.twist
 
-        self.shift[0] =- shifted_msg.pose.pose.position.x + self.sensor_odom[0] 
-        self.shift[1] =- shifted_msg.pose.pose.position.y + self.sensor_odom[1]
+        self.shift[0] = self.sensor_odom[0] - shifted_msg.pose.pose.position.x
+        self.shift[1] = self.sensor_odom[1] - shifted_msg.pose.pose.position.y
         self.get_logger().info(f'changing shift to: x={self.shift[0]}, y={self.shift[1]}')
 
 
