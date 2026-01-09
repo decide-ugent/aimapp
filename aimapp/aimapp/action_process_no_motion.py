@@ -106,12 +106,12 @@ class AIFProcessServer(Node):
             '/shifted_odom',
             qos_profile=qos_policy
         )
-        self.actions_pub = {}
-        for i in range(self.n_actions):
-            self.actions_pub[i] = self.create_publisher(
-                msg_type=PoseStamped,
-                topic="action"+str(i),
-                qos_profile=qos_policy)
+        # self.actions_pub = {}
+        # for i in range(self.n_actions):
+        #     self.actions_pub[i] = self.create_publisher(
+        #         msg_type=PoseStamped,
+        #         topic="action"+str(i),
+        #         qos_profile=qos_policy)
 
         self.Views = ViewMemory(matching_threshold=0.7)
         self.panorama_client = Panorama360CamClient()
@@ -150,7 +150,7 @@ class AIFProcessServer(Node):
             # Load existing model from test_id
             old_test_folder = get_data_dir(None, test_id)
             self.get_logger().info(f'Loading model from {old_test_folder}')
-
+            
             # Check if we're in goal-reaching mode (at least one goal specified)
             is_goal_reaching_mode = (goal_ob_id >= 0) or (goal_pose_id >= 0)
 
@@ -172,7 +172,9 @@ class AIFProcessServer(Node):
             # Reset model to start_node_id if provided
             if self.start_node_id >= 0:
                 self.get_logger().info(f'Resetting model to start node {self.start_node_id}')
-
+                self.model.num_simulations = 15  # Number of MCTS simulations per planning step
+                self.model.lookahead_policy = 5 # Maximum depth for the simulation (rollout) phase
+                self.model.c_param = 5
                 # Extract pose from node ID
                 start_pose = self.model.PoseMemory.id_to_pose(self.start_node_id)
                 self.get_logger().info(f'Start pose from node {self.start_node_id}: {start_pose}')
@@ -236,7 +238,7 @@ class AIFProcessServer(Node):
             pt.x = float(next_pose[0])
             pt.y = float(next_pose[1])
             reachable_points.append(pt)
-            self.publish_vector(next_pose[0], next_pose[1], self.actions_pub[a])
+            #self.publish_vector(next_pose[0], next_pose[1], self.actions_pub[a])
             self.get_logger().info('possible action %d, next node %d and pose %s' % (a, next_pose_id, str(next_pose)))
             next_possible_nodes.append(next_pose_id)
             if a == ideal_next_action[0]:
@@ -570,7 +572,7 @@ class AIFProcessServer(Node):
             pt.x = next_pose[0]
             pt.y = next_pose[1]
             reachable_points.append(pt)
-            self.publish_vector(next_pose[0], next_pose[1], self.actions_pub[a])
+            #self.publish_vector(next_pose[0], next_pose[1], self.actions_pub[a])
             self.get_logger().info('possible action %d next node %d and pose %s' % (a, next_pose_id, str(next_pose)))
             next_possible_nodes.append(next_pose_id)
             if a == ideal_next_action[0]:

@@ -6,6 +6,9 @@
 # Usage: ./launch_autonomous_exploration.sh [test_id] [goal_ob_id] [goal_pose_id] [start_node_id] [influence_radius] [n_actions] [lookahead_node_creation] [skip_double_check]
 # Example: ./launch_autonomous_exploration.sh 5 10 -1 0 1.6 17 8 false
 
+# Apply CycloneDDS configuration for laptop-side ROS2 nodes
+#export CYCLONEDDS_URI=file:///home/idlab332/workspace/ros_ws/cyclonedds_laptop.xml
+
 # Robot SSH configuration
 ROBOT_USER="husarion"
 ROBOT_IP="192.168.1.2"
@@ -272,27 +275,36 @@ if [ "$TEST_ID" != "None" ]; then
     echo ""
     echo "--- Checking for SLAM map files (.data and .posegraph) ---"
 
-    # SLAM maps are stored locally on the laptop in latest_slam_map directory
-    LAPTOP_SLAM_DIR="latest_slam_map"
-
-    # Check if SLAM map exists locally
-    if [ -f "$LAPTOP_SLAM_DIR/slam_map.posegraph" ] && [ -f "$LAPTOP_SLAM_DIR/slam_map.data" ]; then
-        # Copy SLAM map files to the test-specific directory
-        cp "$LAPTOP_SLAM_DIR/slam_map.data" "$LOCAL_MAP_DIR/" 2>/dev/null
-        cp "$LAPTOP_SLAM_DIR/slam_map.posegraph" "$LOCAL_MAP_DIR/" 2>/dev/null
-
-        if [ -f "$LOCAL_MAP_DIR/slam_map.data" ] && [ -f "$LOCAL_MAP_DIR/slam_map.posegraph" ]; then
-            # Use local path (without extension, SLAM toolbox will add it)
-            SLAM_MAP_ARG="$LOCAL_MAP_DIR/slam_map"
-            echo "SUCCESS: SLAM map files copied from $LAPTOP_SLAM_DIR to $LOCAL_MAP_DIR"
-            echo "  - slam_map.data: $LOCAL_MAP_DIR/slam_map.data"
-            echo "  - slam_map.posegraph: $LOCAL_MAP_DIR/slam_map.posegraph"
-            echo "SLAM will load and continue from local saved map: $LOCAL_MAP_DIR/slam_map"
-        else
-            echo "WARNING: Failed to copy SLAM map files, starting fresh mapping"
-        fi
+    # Check if SLAM map already exists in the test-specific directory
+    if [ -f "$LOCAL_MAP_DIR/slam_map.data" ] && [ -f "$LOCAL_MAP_DIR/slam_map.posegraph" ]; then
+        # Use existing SLAM map from test directory (don't overwrite)
+        SLAM_MAP_ARG="$LOCAL_MAP_DIR/slam_map"
+        echo "FOUND: Using existing SLAM map in test directory:"
+        echo "  - slam_map.data: $LOCAL_MAP_DIR/slam_map.data"
+        echo "  - slam_map.posegraph: $LOCAL_MAP_DIR/slam_map.posegraph"
+        echo "SLAM will load and continue from existing test map: $LOCAL_MAP_DIR/slam_map"
     else
-        echo "No saved SLAM map found in $LAPTOP_SLAM_DIR, starting fresh SLAM mapping"
+        # No SLAM map in test directory, check latest_slam_map
+        LAPTOP_SLAM_DIR="latest_slam_map"
+
+        if [ -f "$LAPTOP_SLAM_DIR/slam_map.posegraph" ] && [ -f "$LAPTOP_SLAM_DIR/slam_map.data" ]; then
+            # Copy SLAM map files to the test-specific directory
+            cp "$LAPTOP_SLAM_DIR/slam_map.data" "$LOCAL_MAP_DIR/" 2>/dev/null
+            cp "$LAPTOP_SLAM_DIR/slam_map.posegraph" "$LOCAL_MAP_DIR/" 2>/dev/null
+
+            if [ -f "$LOCAL_MAP_DIR/slam_map.data" ] && [ -f "$LOCAL_MAP_DIR/slam_map.posegraph" ]; then
+                # Use local path (without extension, SLAM toolbox will add it)
+                SLAM_MAP_ARG="$LOCAL_MAP_DIR/slam_map"
+                echo "SUCCESS: SLAM map files copied from $LAPTOP_SLAM_DIR to $LOCAL_MAP_DIR"
+                echo "  - slam_map.data: $LOCAL_MAP_DIR/slam_map.data"
+                echo "  - slam_map.posegraph: $LOCAL_MAP_DIR/slam_map.posegraph"
+                echo "SLAM will load and continue from copied map: $LOCAL_MAP_DIR/slam_map"
+            else
+                echo "WARNING: Failed to copy SLAM map files, starting fresh mapping"
+            fi
+        else
+            echo "No saved SLAM map found in $LAPTOP_SLAM_DIR, starting fresh SLAM mapping"
+        fi
     fi
 
     echo "=========================================="
@@ -502,7 +514,7 @@ echo \"Goal Parameters: goal_ob_id=$GOAL_OB_ID, goal_pose_id=$GOAL_POSE_ID, star
 echo \"Model Parameters: influence_radius=$INFLUENCE_RADIUS, n_actions=$N_ACTIONS, lookahead=$LOOKAHEAD_NODE_CREATION\"
 echo \"Skip Double Check: $SKIP_DOUBLE_CHECK\"
 echo \"Press Ctrl-C to stop this node\"
-ros2 launch aimapp agent_launch.py test_id:=$TEST_ID goal_ob_id:=$GOAL_OB_ID goal_pose_id:=$GOAL_POSE_ID start_node_id:=$START_NODE_ID influence_radius:=$INFLUENCE_RADIUS n_actions:=$N_ACTIONS lookahead_node_creation:=$LOOKAHEAD_NODE_CREATION skip_double_check:=$SKIP_DOUBLE_CHECK 2>&1
+ros2 launch aimapp agent_launch.py test_id:=$TEST_ID goal_ob_id:=$GOAL_OB_ID goal_pose_id:=$GOAL_POSE_ID start_node_id:=$START_NODE_ID influence_radius:=$INFLUENCE_RADIUS n_actions:=$N_ACTIONS lookahead_node_creation:=$LOOKAHEAD_NODE_CREATION skip_double_check:=$SKIP_DOUBLE_CHECK 2>&1 | tee $LOG_DIR/agent_autonomous.log
 bash
 '"
 

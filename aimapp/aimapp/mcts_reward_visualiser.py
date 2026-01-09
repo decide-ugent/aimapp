@@ -166,9 +166,9 @@ class MCTSRewardVisualiser:
 
             # Size - larger for top K nodes
             if i in top_k_indices:
-                base_scale = 0.25  # Larger size for top nodes
+                base_scale = 0.45  # Larger size for top nodes
             else:
-                base_scale = 0.12  # Regular size
+                base_scale = 0.30  # Regular size
 
             marker.scale.x = base_scale
             marker.scale.y = base_scale

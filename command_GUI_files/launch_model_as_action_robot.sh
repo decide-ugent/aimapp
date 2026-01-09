@@ -6,6 +6,9 @@
 # Usage: ./launch_model_as_action_robot.sh [test_id] [goal_ob_id] [goal_pose_id] [start_node_id] [influence_radius] [n_actions] [lookahead_node_creation] [skip_double_check]
 # Example: ./launch_model_as_action_robot.sh 5 10 -1 0 1.6 17 8 false
 
+# Apply CycloneDDS configuration for laptop-side ROS2 nodes
+#export CYCLONEDDS_URI=file:///home/idlab332/workspace/ros_ws/cyclonedds_laptop.xml
+
 # Robot SSH configuration
 ROBOT_USER="husarion"
 ROBOT_IP="192.168.1.2"
@@ -162,6 +165,41 @@ echo "Using odometry shift: x=-$ODOM_X, y=-$ODOM_Y"
 NEG_ODOM_X=$(python3 -c "print(-float('$ODOM_X'))")
 NEG_ODOM_Y=$(python3 -c "print(-float('$ODOM_Y'))")
 
+# Copy model from robot to laptop if TEST_ID is provided
+if [ "$TEST_ID" != "None" ]; then
+    echo "=========================================="
+    echo "Copying model from robot to laptop..."
+    echo "=========================================="
+
+    # Create local tests directory if it doesn't exist
+    LOCAL_TEST_DIR="tests/$TEST_ID"
+    mkdir -p "$LOCAL_TEST_DIR"
+
+    # Copy model.pkl from robot
+    echo "Fetching model.pkl from robot..."
+    scp "${ROBOT_SSH}:${ROBOT_ROS_DIR}/tests/${TEST_ID}/model.pkl" "$LOCAL_TEST_DIR/" 2>/dev/null
+
+    if [ -f "$LOCAL_TEST_DIR/model.pkl" ]; then
+        echo "SUCCESS: Model copied to $LOCAL_TEST_DIR/model.pkl"
+    else
+        echo "WARNING: Could not copy model.pkl from robot"
+        echo "Agent may fail to load model"
+    fi
+
+    # Also copy observations directory if it exists
+    echo "Fetching observations from robot..."
+    scp -r "${ROBOT_SSH}:${ROBOT_ROS_DIR}/tests/${TEST_ID}/observations" "$LOCAL_TEST_DIR/" 2>/dev/null
+
+    if [ -d "$LOCAL_TEST_DIR/observations" ]; then
+        echo "SUCCESS: Observations copied to $LOCAL_TEST_DIR/observations"
+    else
+        echo "INFO: No observations directory found (may not exist yet)"
+    fi
+
+    echo "=========================================="
+    echo ""
+fi
+
 # # # # # Terminal 1: Joy2Twist gamepad controller
 # gnome-terminal --tab --title="Joy2Twist" -- bash -c "
 # ssh -t -X $ROBOT_SSH '
@@ -223,7 +261,7 @@ else
 fi
 
 echo \"\"
-ros2 run aimapp shift_husarion_odom.py 0.0 0.0 
+ros2 run aimapp shift_husarion_odom.py 0.0 0.0 2>&1 | tee $LOG_DIR/shift_husarion_odom.log 
 echo \"Press Ctrl-C to exit\"
 bash
 '
@@ -297,27 +335,36 @@ if [ "$TEST_ID" != "None" ]; then
     echo ""
     echo "--- Checking for SLAM map files (.data and .posegraph) ---"
 
-    # SLAM maps are stored locally on the laptop in latest_slam_map directory
-    LAPTOP_SLAM_DIR="latest_slam_map"
-
-    # Check if SLAM map exists locally
-    if [ -f "$LAPTOP_SLAM_DIR/slam_map.posegraph" ] && [ -f "$LAPTOP_SLAM_DIR/slam_map.data" ]; then
-        # Copy SLAM map files to the test-specific directory
-        cp "$LAPTOP_SLAM_DIR/slam_map.data" "$LOCAL_MAP_DIR/" 2>/dev/null
-        cp "$LAPTOP_SLAM_DIR/slam_map.posegraph" "$LOCAL_MAP_DIR/" 2>/dev/null
-
-        if [ -f "$LOCAL_MAP_DIR/slam_map.data" ] && [ -f "$LOCAL_MAP_DIR/slam_map.posegraph" ]; then
-            # Use local path (without extension, SLAM toolbox will add it)
-            SLAM_MAP_ARG="$LOCAL_MAP_DIR/slam_map"
-            echo "SUCCESS: SLAM map files copied from $LAPTOP_SLAM_DIR to $LOCAL_MAP_DIR"
-            echo "  - slam_map.data: $LOCAL_MAP_DIR/slam_map.data"
-            echo "  - slam_map.posegraph: $LOCAL_MAP_DIR/slam_map.posegraph"
-            echo "SLAM will load and continue from local saved map: $LOCAL_MAP_DIR/slam_map"
-        else
-            echo "WARNING: Failed to copy SLAM map files, starting fresh mapping"
-        fi
+    # Check if SLAM map already exists in the test-specific directory
+    if [ -f "$LOCAL_MAP_DIR/slam_map.data" ] && [ -f "$LOCAL_MAP_DIR/slam_map.posegraph" ]; then
+        # Use existing SLAM map from test directory (don't overwrite)
+        SLAM_MAP_ARG="$LOCAL_MAP_DIR/slam_map"
+        echo "FOUND: Using existing SLAM map in test directory:"
+        echo "  - slam_map.data: $LOCAL_MAP_DIR/slam_map.data"
+        echo "  - slam_map.posegraph: $LOCAL_MAP_DIR/slam_map.posegraph"
+        echo "SLAM will load and continue from existing test map: $LOCAL_MAP_DIR/slam_map"
     else
-        echo "No saved SLAM map found in $LAPTOP_SLAM_DIR, starting fresh SLAM mapping"
+        # No SLAM map in test directory, check latest_slam_map
+        LAPTOP_SLAM_DIR="latest_slam_map"
+
+        if [ -f "$LAPTOP_SLAM_DIR/slam_map.posegraph" ] && [ -f "$LAPTOP_SLAM_DIR/slam_map.data" ]; then
+            # Copy SLAM map files to the test-specific directory
+            cp "$LAPTOP_SLAM_DIR/slam_map.data" "$LOCAL_MAP_DIR/" 2>/dev/null
+            cp "$LAPTOP_SLAM_DIR/slam_map.posegraph" "$LOCAL_MAP_DIR/" 2>/dev/null
+
+            if [ -f "$LOCAL_MAP_DIR/slam_map.data" ] && [ -f "$LOCAL_MAP_DIR/slam_map.posegraph" ]; then
+                # Use local path (without extension, SLAM toolbox will add it)
+                SLAM_MAP_ARG="$LOCAL_MAP_DIR/slam_map"
+                echo "SUCCESS: SLAM map files copied from $LAPTOP_SLAM_DIR to $LOCAL_MAP_DIR"
+                echo "  - slam_map.data: $LOCAL_MAP_DIR/slam_map.data"
+                echo "  - slam_map.posegraph: $LOCAL_MAP_DIR/slam_map.posegraph"
+                echo "SLAM will load and continue from copied map: $LOCAL_MAP_DIR/slam_map"
+            else
+                echo "WARNING: Failed to copy SLAM map files, starting fresh mapping"
+            fi
+        else
+            echo "No saved SLAM map found in $LAPTOP_SLAM_DIR, starting fresh SLAM mapping"
+        fi
     fi
 
     echo "=========================================="
@@ -349,9 +396,9 @@ source install/setup.bash
 echo \"Starting Nav2 husarion...\"
 if [ -n \"$MAP_ARG\" ]; then
     echo \"Using map: $MAP_ARG\"
-    ros2 launch aimapp nav2_husarion_launch.py map:=$MAP_ARG 2>&1 &
+    ros2 launch aimapp nav2_husarion_launch.py map:=$MAP_ARG 2>&1 | tee $LOG_DIR/nav2_husarion_launch.log &
 else
-    ros2 launch aimapp nav2_husarion_launch.py 2>&1 &
+    ros2 launch aimapp nav2_husarion_launch.py 2>&1 | tee $LOG_DIR/nav2_husarion_launch.log &
 fi
 NAV2_PID=\$!
 echo \"Nav2 launched with PID \$NAV2_PID\"
@@ -538,34 +585,30 @@ bash
 # echo "Waiting for SLAM to initialize..."
 sleep 3
 
-# Terminal 5: Minimal agent launch
-gnome-terminal --tab --title="Agent" -- bash -c "
-ssh -t -X $ROBOT_SSH '
-cd $ROBOT_ROS_DIR
+# Terminal 5: Minimal agent launch (LAPTOP)
+gnome-terminal --tab --title="Agent-Laptop" -- bash -c "
 source install/setup.bash
-echo \"Starting minimal agent with test_id=$TEST_ID...\"
+echo \"Starting minimal agent on LAPTOP with test_id=$TEST_ID...\"
 echo \"Goal Parameters: goal_ob_id=$GOAL_OB_ID, goal_pose_id=$GOAL_POSE_ID, start_node_id=$START_NODE_ID\"
 echo \"Model Parameters: influence_radius=$INFLUENCE_RADIUS, n_actions=$N_ACTIONS, lookahead=$LOOKAHEAD_NODE_CREATION\"
 echo \"Skip Double Check: $SKIP_DOUBLE_CHECK\"
 echo \"Press Ctrl-C to stop this node\"
-ros2 launch aimapp minimal_agent_launch.py test_id:=$TEST_ID goal_ob_id:=$GOAL_OB_ID goal_pose_id:=$GOAL_POSE_ID start_node_id:=$START_NODE_ID influence_radius:=$INFLUENCE_RADIUS n_actions:=$N_ACTIONS lookahead_node_creation:=$LOOKAHEAD_NODE_CREATION skip_double_check:=$SKIP_DOUBLE_CHECK 2>&1
+ros2 launch aimapp minimal_agent_launch.py test_id:=$TEST_ID goal_ob_id:=$GOAL_OB_ID goal_pose_id:=$GOAL_POSE_ID start_node_id:=$START_NODE_ID influence_radius:=$INFLUENCE_RADIUS n_actions:=$N_ACTIONS lookahead_node_creation:=$LOOKAHEAD_NODE_CREATION skip_double_check:=$SKIP_DOUBLE_CHECK 2>&1 | tee $LOG_DIR/minimal_agent_launch.log
 bash
-'"
+"
 
 sleep 2
 
 # # ----------------------------------------------------- INIT VISU -------------------------------------------------
 
-# # Terminal 2: Node visualizer
-gnome-terminal --tab --title="Visualizer" -- bash -c "
-ssh -t -X $ROBOT_SSH '
-cd $ROBOT_ROS_DIR
+# # Terminal 2: Node visualizer (LAPTOP)
+gnome-terminal --tab --title="Visualizer-Laptop" -- bash -c "
 source install/setup.bash
-echo \"Starting node visualizer...\"
+echo \"Starting node visualizer on LAPTOP...\"
 echo \"Press Ctrl-C to stop this node\"
-ros2 run aimapp node_visualizer.py 2>&1
+ros2 run aimapp node_visualizer.py 2>&1 | tee $LOG_DIR/node_visualisation.log
 bash
-'"
+"
 
 sleep 2
 
@@ -573,15 +616,15 @@ sleep 2
 
 
 # # Terminal 6: Save data
-gnome-terminal --tab --title="SaveData" -- bash -c "
-ssh -t -X $ROBOT_SSH 'bash -l -c \"
-cd $ROBOT_ROS_DIR;
-source install/setup.bash;
-echo Starting save data node...;
-echo Press Ctrl-C to stop this node;
-ros2 run aimapp save_data.py 2>&1; 
-exec bash
-'"
+# gnome-terminal --tab --title="SaveData" -- bash -c "
+# ssh -t -X $ROBOT_SSH 'bash -l -c \"
+# cd $ROBOT_ROS_DIR;
+# source install/setup.bash;
+# echo Starting save data node...;
+# echo Press Ctrl-C to stop this node;
+# ros2 run aimapp save_data.py 2>&1; 
+# exec bash
+# '"
 
 
 sleep 2
@@ -595,7 +638,7 @@ gnome-terminal --tab --title="Nav2-Client" -- bash -c "
 source install/setup.bash
 echo \"Starting nav2_client in continuous mode...\"
 echo \"Press Ctrl-C to stop this node\"
-ros2 run aimapp nav2_client.py --continuous 2>&1
+ros2 run aimapp nav2_client.py --continuous 2>&1 | tee $LOG_DIR/nav2_client.log 
 bash
 '"
 
@@ -659,3 +702,6 @@ exec bash"
 
 echo "All terminals launched. Check logs in: $LOG_DIR"
 echo "Note: GUI runs locally, all other nodes run on robot at $ROBOT_SSH"
+
+
+#  ros2 topic pub --once /nav2_client_goal_pose geometry_msgs/msg/PoseStamped "{header: {frame_id: map}, pose: {position: {x: 4.33, y: -0.78}, orientation: {w: 1.0}}}"
