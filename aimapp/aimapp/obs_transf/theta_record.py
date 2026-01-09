@@ -64,22 +64,79 @@ def find_file(name, path=None, logging=None):
 def capture_image_from_bash(logging=None):
     """
     Runs the take_remote_picture.sh script to trigger image capture on the robot,
-    transfer the image to the local machine, and print status.
+    transfer the image to the local machine, and return the local image path.
+
+    Args:
+        logging: Optional logger for logging messages
+
+    Returns:
+        str: Path to the captured image file
+
+    Raises:
+        FileNotFoundError: If script not found
+        RuntimeError: If image capture or transfer fails
     """
-    script_path = find_file('take_remote_picture.sh', logging=logging)   
-    if logging: 
-        logging.info(str(script_path)+ str(type(script_path)))
+    script_path = find_file('take_remote_picture.sh', logging=logging)
+
+    if not script_path:
+        raise FileNotFoundError("Could not find take_remote_picture.sh script")
+
+    if logging:
+        logging.info(f"Executing image capture script: {script_path}")
+
     try:
         result = subprocess.run(
             [script_path],
             check=True,
             capture_output=True,
-            text=True
+            text=True,
+            timeout=45
         )
-        print("Script output:\n", result.stdout)
+
+        if logging:
+            logging.info("Image capture script output:\n" + result.stdout)
+        else:
+            print("Script output:\n", result.stdout)
+
+        # Extract image path from last line of output
+        # Expected format: "SUCCESS: Image saved locally to /path/to/image.jpg"
+        for line in reversed(result.stdout.strip().split('\n')):
+            if 'SUCCESS:' in line and 'Image saved locally to' in line:
+                image_path = line.split('Image saved locally to')[-1].strip()
+
+                # Verify file exists
+                if os.path.exists(image_path):
+                    if logging:
+                        logging.info(f"Image captured successfully: {image_path}")
+                    return image_path
+                else:
+                    raise RuntimeError(f"Script reported success but file not found: {image_path}")
+
+        # Fallback: parse from ls output (last line should be file info)
+        lines = result.stdout.strip().split('\n')
+        if lines:
+            last_line = lines[-1]
+            # Extract filename from ls output (format: "permissions user group size date time filename")
+            parts = last_line.split()
+            if len(parts) >= 9:  # ls -lh output has at least 9 fields
+                filename = ' '.join(parts[8:])  # Handle filenames with spaces
+                if os.path.exists(filename):
+                    return filename
+
+        raise RuntimeError("Could not extract image path from script output")
+
+    except subprocess.TimeoutExpired as e:
+        error_msg = "Image capture script timed out after 30 seconds"
+        if logging:
+            logging.error(error_msg)
+        raise RuntimeError(error_msg) from e
     except subprocess.CalledProcessError as e:
-        print("Error running script:\n", e.stderr)
-        raise
+        error_msg = f"Theta Image capture failed: {e.stderr}"
+        if logging:
+            logging.error(error_msg)
+        else:
+            print("Error running script:\n", e.stderr)
+        raise RuntimeError(error_msg) from e
 
 
 def get_latest_image_file(directory):
