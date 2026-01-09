@@ -14,10 +14,16 @@ from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.action.server import ServerGoalHandle
 from rclpy.executors import MultiThreadedExecutor
 class PotentialFieldAction(Node):
-    def __init__(self, cmd_linear_max:float= 0.2, cmd_angular_max:float=0.2, 
+    def __init__(self, cmd_linear_max:float= 0.25, cmd_angular_max:float=0.1,
                  angular_goal_tolerance:float = np.pi/10,
-                 distance_goal_tolerance:float = 0.1, obstacle_tolerance:float = 0.8):
-        super(PotentialFieldAction, self).__init__("PotentialFieldAction")
+                 distance_goal_tolerance:float = 0.1, obstacle_tolerance:float = 0.25):
+        super(PotentialFieldAction, self).__init__(
+            "PotentialFieldAction",
+            automatically_declare_parameters_from_overrides=True
+        )
+
+        # use_sim_time is automatically declared by automatically_declare_parameters_from_overrides
+        # and will be set by bag playback with --clock flag
         
         qos_policy = rclpy.qos.QoSProfile(
             reliability=rclpy.qos.ReliabilityPolicy.RELIABLE,
@@ -33,14 +39,14 @@ class PotentialFieldAction(Node):
         
         self.odom_sub = self.create_subscription(
             Odometry,
-            'odometry/filtered',
+            'odom',
             self.odom_callback,
             qos_profile=qos_policy
         )
 
         self.lidar_sub = self.create_subscription(
             LaserScan,
-            'scan_filtered',
+            'scan',
             self.lidar_callback,
             qos_profile=qos_policy
         )
@@ -80,8 +86,12 @@ class PotentialFieldAction(Node):
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
-        self.execution_rate =  self.create_rate(5) #sec = 1/Hz
-        
+        # Execution rate control: use event flag instead of deprecated create_rate()
+        self.execution_rate_hz = 5.0  # Hz
+        self.execution_period = 1.0 / self.execution_rate_hz  # seconds
+        self.rate_event = threading.Event()
+        self.rate_timer = self.create_timer(self.execution_period, self._rate_timer_callback)
+
         self.timer = None
         #test_potential_field = self.create_timer(timer_period_sec=1, callback=self.execute_potential_field)
         #self.service_potential_field = self.create_service(PotentialField, 'potential_field', self.execute_potential_field)    
@@ -100,11 +110,20 @@ class PotentialFieldAction(Node):
             cancel_callback=self.cancel_callback,
             result_timeout=2000)
         
+    def _rate_timer_callback(self):
+        """Timer callback to set event flag for rate control"""
+        self.rate_event.set()
+
+    def rate_sleep(self):
+        """Sleep for one execution period (replacement for execution_rate.sleep())"""
+        self.rate_event.clear()
+        self.rate_event.wait(timeout=self.execution_period * 2)  # Wait with timeout as safety
+
     def check_movement(self):
         if self.robot_pos_xy is not None:
             robot_pose = self.robot_pos_xy + [self.robot_theta]
             if self.last_timer_position is not None \
-            and np.allclose(robot_pose, self.last_timer_position, atol=0.1):
+            and np.allclose(robot_pose, self.last_timer_position, atol=0.15):  # Increased tolerance to 0.15m
                 self.get_logger().info("Robot has not moved in the last 8 seconds. Starting abortion")
                 self.last_timer_position = None
                 self.stop_motion_timer()
@@ -170,13 +189,16 @@ class PotentialFieldAction(Node):
         """ get repulsion field from scan"""
 
         # Define the Field of View (e.g., 180° or 90° in radians)
-        fov_half = np.deg2rad(30)  
+        fov_half = np.deg2rad(30)
 
         angle_min = lidar_msg.angle_min
         angle_max = lidar_msg.angle_max
         range_max = lidar_msg.range_max
         range_min = lidar_msg.range_min
         step = lidar_msg.angle_increment
+
+        # Ignore scan data closer than robot diameter (20cm) to filter out robot body
+        min_obstacle_distance = 0.20  # meters
      
         scan = np.array(lidar_msg.ranges)
         scan_range  = len(scan)
@@ -198,11 +220,14 @@ class PotentialFieldAction(Node):
         for i in range(scan_range): 
             angle = angle_min + step * i + self.robot_theta + theta_offset # Calculate the absolute angle of the scan point
 
-            angle_difference = normalise_angle(angle - self.robot_theta) 
+            angle_difference = normalise_angle(angle - self.robot_theta)
             # Consider only obstacles within the FOV in front of the robot
             if abs(angle_difference) <= fov_half:
-                #If the value of the scan is > 3.5m it's above the lidar scan range
-                if(np.isfinite(scan[i]) and scan[i] <= range_max and scan[i] >= range_min):
+                # Filter: ignore scan data within robot diameter AND valid range
+                if(np.isfinite(scan[i]) and
+                   scan[i] <= range_max and
+                   scan[i] >= range_min and
+                   scan[i] >= min_obstacle_distance):  # Ignore readings closer than 20cm
                     Q_repulsion = 1
                     Current_Q = Q_repulsion / (4 * np.pi * pow(scan[i],2))
                     #Current_Q = Q_repulsion / pow(scan[i],2) * self.compute_force(angle, angle_max)
@@ -226,14 +251,14 @@ class PotentialFieldAction(Node):
         #THIS WILL BE THE ACTION CALLBACK
         self.get_logger().info("Received a goal from client")
         self.start_motion_timer()
-        self.execution_rate.sleep()
+        self.rate_sleep()
         goal_reached = False
 
         if self.tf_theta is None:
             self.get_tf_transform()
         
         while not goal_reached and rclpy.ok():
-            # self.get_logger().info(str(goal_pose))
+            self.get_logger().info(f" Goal to reach {goal_pose}")
             
             #self.get_logger().info('GOAL:'+str(goal_pose))
             #self.get_logger().info('POSE:'+str(self.robot_pos_xy)+str(self.robot_theta))
@@ -243,7 +268,7 @@ class PotentialFieldAction(Node):
                 result.pose = [np.round(self.robot_pos_xy[0],3), np.round(self.robot_pos_xy[1],3), np.round(self.robot_theta,4)]
                 return result
             if self.robot_pos_xy is None or self.V_repulsion is None:
-                self.execution_rate.sleep()
+                self.rate_sleep()
                 continue
 
             #print('reflecting')
@@ -261,41 +286,46 @@ class PotentialFieldAction(Node):
             
             self.publish_vector(x_final, y_final, self.apf_final)
             angle_target = normalise_angle(np.arctan2(y_final, x_final))
-            angle_delta = angle_target - normalise_angle(self.robot_theta)
-            # print('angle_delta before normalisation:', angle_delta)
-            angle_delta = normalise_angle(angle_delta)
-
-            self.get_logger().info("angle to goal: %f, angle_target %f angle robot: %f" % (angle_delta,angle_target, normalise_angle(self.robot_theta)))
+            angle_robot = normalise_angle(self.robot_theta)
+            # Compute shortest angular distance (handles ±π wrap-around correctly)
+            angle_delta = normalise_angle(angle_target - angle_robot)
+            
+            self.get_logger().info("distance goal %.3f, angle_robot: %.3f, angle_target: %.3f, angle_delta: %.3f (w_in will be: %.3f)" %
+                                 (self.delta_distance, angle_robot, angle_target, angle_delta, self.angular_vel_reductor * angle_delta))
             feedback_msg.dist_to_goal = self.delta_distance
             goal_handle.publish_feedback(feedback_msg)
             
             v_in, w_in = self.compute_velocities(self.delta_distance, angle_delta)
             # print('linear vel, angular vel:', v_in, w_in)
             direction = Twist()
-            if(abs(angle_delta) > self.angular_goal_tolerance) \
-                and self.delta_distance > self.distance_goal_tolerance \
-                and abs(w_in) >= 0.05: #Don't want to wait forever cause of Rep
-                # #turn
-                direction.angular.z = w_in
-                direction.linear.x  = 0.0
-            elif self.delta_distance > self.distance_goal_tolerance :
-                #forward
-                direction.angular.z = 0.0
-                direction.linear.x  = v_in
-            elif abs(w_in) < 0.05:
+
+            # Check if we've reached the goal (distance within tolerance)
+            distance_ok = self.delta_distance <= self.distance_goal_tolerance
+
+            if distance_ok:
+                # Goal reached - stop
                 direction.angular.z = 0.0
                 direction.linear.x  = 0.0
                 goal_reached = True
             else:
-                # print('LAST ELSE')
-                direction.angular.z = 0.0
-                direction.linear.x  = 0.0
-                goal_reached = True
+                # Continuous potential field navigation:
+                # Apply BOTH linear and angular velocity simultaneously
+                # The potential field already computed the correct direction
 
-            # print('vel:', direction)
+                # Reduce forward velocity if not well-aligned (but don't stop completely)
+                angle_alignment_factor = max(0.3, 1.0 - abs(angle_delta) / np.pi)
+
+                direction.linear.x = v_in * angle_alignment_factor
+                direction.angular.z = w_in
+
+                # Don't move forward if angle error is very large (> 90 degrees)
+                if abs(angle_delta) > np.pi / 2:
+                    direction.linear.x = 0.0
+
+            self.get_logger().info("Publishing cmd_vel: linear.x=%.3f, angular.z=%.3f" %
+                                 (direction.linear.x, direction.angular.z))
             self.cmd_pub.publish(direction)
-            self.execution_rate.sleep()
-            #time.sleep(self.execution_rate)
+            self.rate_sleep()
             #print('end sleep')
         
         direction = Twist()
@@ -499,17 +529,19 @@ def main():
     rclpy.init()
     # print('HERE')
     potential_field = PotentialFieldAction()
-    
-    # rclpy.spin(potential_field)
 
+    # Use MultiThreadedExecutor for action server
     multi_thread_executor = MultiThreadedExecutor(num_threads=4)
     multi_thread_executor.add_node(potential_field)
-    rclpy.spin(potential_field, executor=multi_thread_executor)
 
-
-    print('DESTROY')
-    potential_field.destroy_node()
-    rclpy.shutdown()
+    try:
+        multi_thread_executor.spin()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        print('DESTROY')
+        potential_field.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
