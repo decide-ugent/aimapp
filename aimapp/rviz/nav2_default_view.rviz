@@ -8,9 +8,14 @@ Panels:
         - /TF1/Frames1
         - /TF1/Tree1
         - /Marker1/Topic1
-        - /MarkerArray4
+        - /MarkerArray3/Topic1
+        - /MarkerArray3/Namespaces1
+        - /Odometry1/Shape1
+        - /Odometry1/Covariance1
+        - /Odometry1/Covariance1/Position1
+        - /Odometry1/Covariance1/Orientation1
       Splitter Ratio: 0.5833333134651184
-    Tree Height: 390
+    Tree Height: 140
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties
@@ -64,89 +69,6 @@ Visualization Manager:
         Expand Link Details: false
         Expand Tree: false
         Link Tree Style: Links in Alphabetic Order
-        antenna_connector_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        antenna_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        base_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        body_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera_bottom_screw_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        camera_mount_bot_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        camera_mount_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera_mount_mid_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        camera_mount_top_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        cover_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        fl_wheel_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        fr_wheel_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        imu_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        laser:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        rl_wheel_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        rr_wheel_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        slamtec_rplidar_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
       Mass Properties:
         Inertia: false
         Mass: false
@@ -160,80 +82,63 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: false
-        antenna_connector_link:
-          Value: false
-        antenna_link:
-          Value: false
-        base_link:
+        panda_EE:
           Value: true
-        body_link:
-          Value: false
-        camera_bottom_screw_frame:
-          Value: false
-        camera_link:
-          Value: false
-        camera_mount_bot_link:
-          Value: false
-        camera_mount_link:
-          Value: false
-        camera_mount_mid_link:
-          Value: false
-        camera_mount_top_link:
-          Value: false
-        cover_link:
-          Value: false
-        fl_wheel_link:
-          Value: false
-        fr_wheel_link:
-          Value: false
-        imu_link:
-          Value: false
-        laser:
-          Value: false
-        map:
+        panda_K:
           Value: true
-        odom:
+        panda_NE:
           Value: true
-        rl_wheel_link:
-          Value: false
-        rr_wheel_link:
-          Value: false
-        slamtec_rplidar_link:
-          Value: false
+        panda_hand:
+          Value: true
+        panda_hand_sc:
+          Value: true
+        panda_hand_tcp:
+          Value: true
+        panda_leftfinger:
+          Value: true
+        panda_link0:
+          Value: true
+        panda_link0_sc:
+          Value: true
+        panda_link1:
+          Value: true
+        panda_link1_sc:
+          Value: true
+        panda_link2:
+          Value: true
+        panda_link2_sc:
+          Value: true
+        panda_link3:
+          Value: true
+        panda_link3_sc:
+          Value: true
+        panda_link4:
+          Value: true
+        panda_link4_sc:
+          Value: true
+        panda_link5:
+          Value: true
+        panda_link5_sc:
+          Value: true
+        panda_link6:
+          Value: true
+        panda_link6_sc:
+          Value: true
+        panda_link7:
+          Value: true
+        panda_link7_sc:
+          Value: true
+        panda_link8:
+          Value: true
+        panda_rightfinger:
+          Value: true
       Marker Scale: 1
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: true
       Tree:
-        map:
-          odom:
-            base_link:
-              body_link:
-                cover_link:
-                  antenna_connector_link:
-                    antenna_link:
-                      {}
-                  camera_mount_bot_link:
-                    camera_mount_mid_link:
-                      camera_mount_top_link:
-                        camera_mount_link:
-                          camera_bottom_screw_frame:
-                            camera_link:
-                              {}
-                  slamtec_rplidar_link:
-                    laser:
-                      {}
-                fl_wheel_link:
-                  {}
-                fr_wheel_link:
-                  {}
-                imu_link:
-                  {}
-                rl_wheel_link:
-                  {}
-                rr_wheel_link:
-                  {}
+        {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -308,7 +213,7 @@ Visualization Manager:
       Class: rviz_default_plugins/Map
       Color Scheme: map
       Draw Behind: true
-      Enabled: true
+      Enabled: false
       Name: Map
       Topic:
         Depth: 1
@@ -324,7 +229,7 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /map_updates
       Use Timestamp: false
-      Value: true
+      Value: false
     - Alpha: 1
       Arrow Length: 0.019999999552965164
       Axes Length: 0.30000001192092896
@@ -643,24 +548,11 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /waypoints
       Value: true
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
-      Name: MarkerArray
-      Namespaces:
-        nodes: true
-        state_labels: true
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /visitable_nodes
-      Value: true
     - Class: rviz_default_plugins/Marker
       Enabled: true
       Name: Marker
       Namespaces:
-        "": true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -701,8 +593,7 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        nodes: true
-        state_labels: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -721,6 +612,45 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /mcts_reward_visualization
+      Value: true
+    - Angle Tolerance: 0.10000000149011612
+      Class: rviz_default_plugins/Odometry
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 0.05000000074505806
+          Value: true
+        Position:
+          Alpha: 0.5
+          Color: 204; 51; 204
+          Scale: 0.05000000074505806
+          Value: true
+        Value: true
+      Enabled: true
+      Keep: 500
+      Name: Odometry
+      Position Tolerance: 0.10000000149011612
+      Shape:
+        Alpha: 1
+        Axes Length: 1
+        Axes Radius: 0.10000000149011612
+        Color: 255; 25; 0
+        Head Length: 0.029999999329447746
+        Head Radius: 0.009999999776482582
+        Shaft Length: 0.05000000074505806
+        Shaft Radius: 0.009999999776482582
+        Value: Arrow
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /odometry/filtered
       Value: true
   Enabled: true
   Global Options:
@@ -759,7 +689,7 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: -11.020030975341797
+      Angle: -0.0050010355189442635
       Class: rviz_default_plugins/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
@@ -769,21 +699,21 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 74.89793395996094
+      Scale: 52.46382141113281
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz_default_plugins)
-      X: -0.39316752552986145
-      Y: 1.0874919891357422
+      X: 4.8329691886901855
+      Y: -0.49711596965789795
     Saved: ~
 Window Geometry:
   Displays:
     collapsed: false
-  Height: 1016
+  Height: 610
   Hide Left Dock: false
   Hide Right Dock: true
   Navigation 2:
     collapsed: false
-  QMainWindow State: 000000ff00000000fd00000004000000000000015a0000039efc020000000afb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003d000001c3000000c900fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb00000018004e0061007600690067006100740069006f006e002000320100000206000001d50000012600fffffffb0000001e005200650061006c00730065006e0073006500430061006d00650072006100000002c6000000c10000002800ffffff000000010000010f0000034afc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000003d0000034a000000a400fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000004420000003efc0100000002fb0000000800540069006d00650100000000000004420000000000000000fb0000000800540069006d00650100000000000004500000000000000000000002ef0000039e00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd00000004000000000000015600000208fc020000000afb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003d000000c9000000c900fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb00000018004e0061007600690067006100740069006f006e00200032010000010c000001390000013900fffffffb0000001e005200650061006c00730065006e0073006500430061006d00650072006100000002c6000000c10000002800ffffff000000010000010f0000039efc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000003d0000039e000000a400fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000004420000003efc0100000002fb0000000800540069006d00650100000000000004420000000000000000fb0000000800540069006d00650100000000000004500000000000000000000006200000020800000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   RealsenseCamera:
     collapsed: false
   Selection:
@@ -792,6 +722,6 @@ Window Geometry:
     collapsed: false
   Views:
     collapsed: true
-  Width: 1103
-  X: 817
-  Y: 27
+  Width: 1916
+  X: 1920
+  Y: 0

@@ -13,7 +13,7 @@ import threading
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from aimapp_actions.action import Panorama   
 from aimapp.obs_transf.theta_record import \
-      capture_image_from_bash, get_latest_image_file, read_image
+      capture_image_from_bash, read_image
 
 
 class GeneratePanorama360Cam(Node):
@@ -125,10 +125,27 @@ class GeneratePanorama360Cam(Node):
         result = Panorama.Result()
         actions_range = self.generate_action_range(n_actions)
 
-        capture_image_from_bash()#self.get_logger())
-        latest_image_path = get_latest_image_file(self.images_dir)
-        self.get_logger().info(f"Latest image: {latest_image_path}")
-        images_compilation = [self.img_bridge.cv2_to_imgmsg(read_image(latest_image_path, reduction=6), encoding='rgb8')]
+        # Capture image from remote robot camera
+        try:
+            self.get_logger().info("Capturing image from remote camera...")
+
+            # Capture image and get the path directly from the script
+            image_path = capture_image_from_bash(logging=self.get_logger())
+            self.get_logger().info(f"Using image: {image_path}")
+
+            # Read and convert image for ROS message
+            cv_image = read_image(image_path, reduction=8)
+            ros_image = self.img_bridge.cv2_to_imgmsg(cv_image, encoding='rgb8')
+            images_compilation = [ros_image]
+
+        except (FileNotFoundError, RuntimeError) as e:
+            self.get_logger().error(f"Image capture failed: {e}")
+            goal_handle.abort()
+            return Panorama.Result()
+        except Exception as e:
+            self.get_logger().error(f"Unexpected error during image capture: {e}")
+            goal_handle.abort()
+            return Panorama.Result()
 
         while self.last_scan is None or self.robot_odom is None:
             self.execution_rate.sleep()

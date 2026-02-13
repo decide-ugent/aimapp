@@ -5,14 +5,16 @@ It includes localisation, mapping and decision making to explore or reach given 
 
 It requires ubuntu 22.04 and ros2 humble or is configured to run inside a Docker container for ease of setup and consistent environments.
 
+A general audience blog can be found on our [Decide blog](https://decide.ugent.be/blog/2025-09-10-robot-nav-aif-rw/) with some aditional videos
+
 ##### Table of Contents  
 [Overview](##Overview)  
 [Docker](##Docker)  
 [Locally](##Locally)  
 [Start the project](##Start-the-project)  
 [Modifying Agent and MCTS Parameters ](##Modifying-Agent-and-MCTS-Parameters)
-
-
+[example usage](##example-usage)
+[cite us](##cite-us)
 
 <!-- <a name="Overview"/> -->
 ## Overview  <a name="Overview"></a>
@@ -363,3 +365,9 @@ float64 dist_to_goal
 ```
 
 The model uses the boolean to know if we reached the pose and determine using pose wether the distance is acceptable or not (based on `robot_dim` and states `influence_radius` variables). 
+
+
+<!-- ## example usage <a name="example-usage"></a>
+<p align="center">
+<video src="/uploads/fc2b4ce40f67a432525ab0f4f68cc692/demo_reach_aerial_drone_start.mp4", width='500px'></video>
+</p> -->
