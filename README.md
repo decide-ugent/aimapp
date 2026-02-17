@@ -308,6 +308,11 @@ class Ours_V5_RW(Agent):
 
 ### 2. MCTS Parameters
 
+Here is an example of what is happening during the decision process:
+<p align="center">
+<img src='git_img/mcts_animation.gif' width='700'>
+</p>
+
 Also in `aimapp/aimapp/model/V5.py`, look for:
 
 ```python
