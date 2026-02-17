@@ -106,6 +106,10 @@ cd /path/to/ros_workspace  # Important: Launch from ROS workspace root
 python3 src/aimapp/command_GUI_files/GUI_main.py
 ```
 
+<p align="center">
+<img src='git_img/main_launcher.png' width='250'> 
+</p>
+
 This launches the main menu with two options:
 
 ##### 1. Exploration Mode (`launch_exploration_gui.py`)
@@ -178,8 +182,11 @@ This will open 8 terminal tabs with:
 - Nav2 navigation (Husarion)
 - Minimal agent
 - Data saving node
-- AIF Process action sender (interactive)
-- Goal sender terminal (interactive)
+- AIF Process action sender (interactive) -see image below-
+- Goal sender terminal (interactive) 
+<p align="center">
+<img src='git_img/manual_action_selection.png' width='250'>
+</p>
 
 **Sending navigation goals:**
 
